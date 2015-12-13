@@ -6,29 +6,28 @@ import seaborn
 class ARMA:
     def __init__(self, data):
         data = np.array(data)
-        self.mean = data.mean()
-        self.data = data - self.mean
+        self._mean = data.mean()
+        self._data = data - self._mean
 
-        #cache first 100 values of acf
-        self._acf = [None] * 100
-        self._acf = [self.sample_autocovariance_function(k) for k in range(min(100, len(self.data)))]
+        self._sample_auto_covariance = {}
+        self.model = None
 
-    def sample_autocovariance_function(self, lag):
+    def sample_autocovariance(self, lag):
         lag = abs(lag)
-        if lag < min(100, len(self.data)) and self.acf[lag] is not None:
-            return self._acf[lag]
-        n = len(self.data)
+        if lag in self._sample_auto_covariance:
+            return self._sample_auto_covariance[lag]
+        n = len(self._data)
         if lag >= n:
             raise ValueError('lag out of range')
-        return (1.0 / n) * sum(self.data[-(n - lag):] * self.data[:n - lag])
+        return (1.0 / n) * sum(self._data[-(n - lag):] * self._data[:n - lag])
 
     def sample_autococorrelation_function(self, lag):
-        return self.sample_autocovariance_function(lag) / self.sample_autocovariance_function(0)
+        return self.sample_autocovariance(lag) / self.sample_autocovariance(0)
 
     def sample_covariance_matrix(self, k):
         row = []
         for l in range(k):
-            row.append(self.sample_autocovariance_function(l))
+            row.append(self.sample_autocovariance(l))
         matrix = []
         for l in range(k):
             matrix.append(row[1:1 + l][::-1] + row[:k - l])
@@ -38,12 +37,12 @@ class ARMA:
         if k == 0:
             return 1
         Gamma_k = self.sample_covariance_matrix(k)
-        gamma_k = np.matrix([self.sample_autocovariance_function(l) for l in range(1, k + 1)]).T
+        gamma_k = np.matrix([self.sample_autocovariance(l) for l in range(1, k + 1)]).T
         return (np.linalg.inv(Gamma_k) * gamma_k).item((k - 1, 0))
 
     def plot_ACF(self, limit=None):
         if not limit:
-            limit = len(self.data)
+            limit = len(self._data)
         AC = []
         for lag in range(1, limit):
             AC.append(self.sample_autococorrelation_function(lag))
@@ -55,7 +54,7 @@ class ARMA:
 
     def plot_PACF(self, limit=None):
         if not limit:
-            limit = len(self.data)
+            limit = len(self._data)
         PAC = []
         for lag in range(1, limit):
             PAC.append(self.partial_autocorrelation_function(lag))
@@ -67,17 +66,17 @@ class ARMA:
 
     def fit_ar(self, p):
         Gamma = self.sample_covariance_matrix(p)
-        gamma = np.matrix([self.sample_autocovariance_function(l) for l in range(1, p + 1)]).T
+        gamma = np.matrix([self.sample_autocovariance(l) for l in range(1, p + 1)]).T
         self.coefs = np.linalg.inv(Gamma) * gamma
-        self.sigma = self.sample_autocovariance_function(0) - self.coefs.T * gamma
+        self.sigma = self.sample_autocovariance(0) - self.coefs.T * gamma
 
     def fit_ar_durbin_levinson(self, p):
         self.nu = np.zeros(p)
         self.phi = [np.zeros(m + 1) for m in range(p)]
-        self.nu[0] = self.sample_autocovariance_function(0) * (1 - self.sample_autococorrelation_function(1) ** 2)
+        self.nu[0] = self.sample_autocovariance(0) * (1 - self.sample_autococorrelation_function(1) ** 2)
         self.phi[0][0] = self.sample_autococorrelation_function(1)
         for m in range(1, p):
-            self.phi[m][m] = (self.sample_autocovariance_function(m + 1) - sum(self.phi[m - 1][j] * self.sample_autocovariance_function(m - j) for j in range(m))) / self.nu[m - 1]
+            self.phi[m][m] = (self.sample_autocovariance(m + 1) - sum(self.phi[m - 1][j] * self.sample_autocovariance(m - j) for j in range(m))) / self.nu[m - 1]
             for j in range(m):
                 self.phi[m][j] = self.phi[m - 1][j] - self.phi[m][m] * self.phi[m - 1][m - 1 - j]
             self.nu[m] = self.nu[m - 1] * (1 - self.phi[m][m] ** 2)
@@ -88,11 +87,11 @@ class ARMA:
     def fit_ma_durbin_levinson(self, q):
         self.nu_ma = np.zeros(q + 1)
         self.theta_ma = [np.zeros(m + 1) for m in range(q)]
-        self.nu_ma[0] = self.sample_autocovariance_function(0)
+        self.nu_ma[0] = self.sample_autocovariance(0)
         for m in range(q):
             for k in range(m + 1):
-                self.theta_ma[m][m - k] = (self.sample_autocovariance_function(m - k + 1) - sum(self.theta_ma[m][m - j] * self.theta_ma[k - 1][k - j - 1] * self.nu_ma[j] for j in range(k))) / self.nu_ma[k]
-            self.nu_ma[m + 1] = self.sample_autocovariance_function(0) - sum(self.theta_ma[m][m - j] ** 2 * self.nu_ma[j] for j in range(m + 1))
+                self.theta_ma[m][m - k] = (self.sample_autocovariance(m - k + 1) - sum(self.theta_ma[m][m - j] * self.theta_ma[k - 1][k - j - 1] * self.nu_ma[j] for j in range(k))) / self.nu_ma[k]
+            self.nu_ma[m + 1] = self.sample_autocovariance(0) - sum(self.theta_ma[m][m - j] ** 2 * self.nu_ma[j] for j in range(m + 1))
 
     def get_confidence_interval_ma_d_l(self, q):
         return [1.96 * np.sqrt(sum(self.theta_ma[q - 1][k] ** 2 for k in range(j + 1))) / np.sqrt(len(self.data)) for j in range(q)]
@@ -125,9 +124,9 @@ class ARMA:
         thetas = [np.zeros(k + 1) for k in range(len(self.data))]
         for n in range(len(self.data)):
             for k in range(n):
-                thetas[n - 1][n - k - 1] = (self.sample_autocovariance_function(n - k) -
+                thetas[n - 1][n - k - 1] = (self.sample_autocovariance(n - k) -
                                             sum(thetas[k - 1][k - j - 1] * thetas[n - 1][n - j - 1] * nus[j] for j in range(k))) / nus[k]
-            nus[n] = self.sample_autocovariance_function(0) - sum(thetas[n - 1][n - j - 1] ** 2 * nus[j] for j in range(n))
+            nus[n] = self.sample_autocovariance(0) - sum(thetas[n - 1][n - j - 1] ** 2 * nus[j] for j in range(n))
         return thetas, nus
 
     #ToDo
@@ -135,9 +134,10 @@ class ARMA:
         return None
 
     def weighted_sum_squares(self, values, weights):
-        return sum(value * weight for value, weight in zip(values, weights))
+        return sum(value ** 2 * weight for value, weight in zip(values, weights))
 
 
+#class for handling the pure math side, not supposed to see data
 class PureARMA:
     def __init__(self, phi=None, theta=None, sigma_sq=1):
         if phi is None:
@@ -147,11 +147,16 @@ class PureARMA:
         self._phi = phi
         self._theta = theta
         self._sigma_sq = sigma_sq
+
         self._p = len(phi)
         self._q = len(theta)
         self._m = max(self._p, self._q)
+
+        #dicts for caching
         self._ma_infty_coefs = {}
         self._acf = {}
+        self._innovation_coefs = {}
+        self._innovation_errors = {}
 
     def get_params(self):
         return (self._phi, self._theta, self._sigma_sq)
@@ -162,6 +167,13 @@ class PureARMA:
         if k <= self._p:
             return self._phi[k - 1]
         return 0
+
+    def _get_ar_coeff(self, k):
+        if k == 0:
+            return 1
+        if k < 0:
+            return 0
+        return -self.get_phi(k)
 
     def get_theta(self, k):
         if k == 0:
@@ -186,26 +198,64 @@ class PureARMA:
     def plot_impulse_response(self, maxlag=20):
         plt.plot([self.get_ma_infty_coef(k) for k in range(maxlag + 1)])
 
-    #ToDo
-    def acf(self, lag):
+    #Brockwell, Davis p. 93
+    def auto_cov_funct(self, lag):
         lag = abs(lag)
         if lag in self._acf:
             return self._acf[lag]
-        if lag < max(self._p, self._q + 1):
-            rhs = self._sigma_sq * np.matrix([self.get_theta(j) * self.get_ma_infty_coef(j - lag) for j in range(lag, self._q + 1)])
-            row = [1] + [-self.get_phi(__) for __ in range(1, self._p + 1)]
-            lhs = np.matrix([row[-__:] + row[:-__] for __ in range(len(row))])
-            for k, acf_k in np.linalg.inv(lhs) * rhs.T:
+        if lag <= self._p:
+            rhs = self._sigma_sq * np.array([sum(self.get_theta(j) * self.get_ma_infty_coef(j - k) for j in range(k, self._q + 1)) for k in range(self._p + 1)])
+            lhs = np.zeros((self._p + 1, self._p + 1))
+            for t in range(self._p + 1):
+                lhs[0][t] = self._get_ar_coeff(t)
+            for k in range(1, self._p + 1):
+                lhs[k][0] = self._get_ar_coeff(k)
+                for t in range(1, self._p + 1):
+                    lhs[k][t] = self._get_ar_coeff(t + k) + self._get_ar_coeff(k - t)
+            for k, acf_k in enumerate(np.linalg.lstsq(lhs, rhs)[0]):
                 self._acf[k] = acf_k
             return self._acf[lag]
-        return sum(self.get_phi(k) * self.acf(lag - k) for k in range(1, self._p + 1))
+        return sum(self.get_phi(k) * self.auto_cov_funct(lag - k) for k in range(1, self._p + 1))
+
+    #Brockwell, Davis p. 172
+    def get_innovation_coef(self, n, j):
+        if j > n:
+            raise ValueError('innovation coefficient not defined for j > n')
+        if (n, j) in self._innovation_coefs:
+            return self._innovation_coefs[(n, j)]
+        coef = self._calculate_innovation_coef(n, j)
+        self._innovation_coefs[(n, j)] = coef
+        return coef
+
+    def _calculate_innovation_coef(self, n, j):
+        k = n - j
+        return (
+            self._kappa_w(n + 1, k + 1) -
+            sum(self.get_innovation_coef(k, k - i) * self.get_innovation_coef(n, n - i) * self.get_innovations_error(i) for i in range(k))
+        ) / self.get_innovations_error(k)
+
+    def get_innovations_error(self, n):
+        if n in self._innovation_errors:
+            return self._innovation_errors[n]
+        error = self._calculate_innovation_error(n)
+        self._innovation_errors[n] = error
+        return error
+
+    def get_r(self, n):
+        return self.get_innovations_error(n) / self._sigma_sq
+
+    def _calculate_innovation_error(self, n):
+        return self._kappa_w(n + 1, n + 1) - sum(self.get_innovation_coef(n, n - j) ** 2 * self.get_innovations_error(j) for j in range(n))
 
     #Brockwell, Davis p. 175
     def _kappa_w(self, i, j):
         if 1 <= min(i, j) and max(i, j) <= self._m:
-            return self.acf(i - j) / self._sigma_sq
+            return self.auto_cov_funct(i - j) / self._sigma_sq
         if min(i, j) <= self._m and self._m < max(i, j) and max(i, j) <= 2 * self._m:
-            return (self.acf(i - j) - sum(phi_r * self.acf(r - abs(i - j) + 1) for r, phi_r in enumerate(self._phi))) / self._sigma_sq
-        if min(i, j) > m:
+            return (
+                self.auto_cov_funct(i - j) -
+                sum(phi_r * self.auto_cov_funct(r - abs(i - j) + 1) for r, phi_r in enumerate(self._phi))
+            ) / self._sigma_sq
+        if min(i, j) > self._m:
             return sum(self.get_theta(r) * self.get_theta(r + abs(i - j)) for r in range(self._q + 1))
         return 0
