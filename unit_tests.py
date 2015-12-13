@@ -83,11 +83,14 @@ class Test_PureARMA(unittest.TestCase):
 
     def test_innovation_r(self):
         model_arma11 = PureARMA([0.2], [0.4])
+        model_ma = PureARMA(theta=[0.5], sigma_sq=3)
 
         self.assertAlmostEqual(model_arma11.get_r(1), 1.0436, 4)
         self.assertAlmostEqual(model_arma11.get_r(2), 1.0067, 4)
         for n in range(6, 11):
             self.assertAlmostEqual(model_arma11.get_r(n), 1, 4)
+
+        self.assertAlmostEqual(model_ma.get_r(0), (1 + 0.5 ** 2) / 3, 4)
 
 
 class Test_ARMA(unittest.TestCase):
@@ -133,6 +136,29 @@ class Test_ARMA(unittest.TestCase):
         ma1.fit_ma(q=1, method='durbin_levinson')
         self.assertAlmostEqual(ma1.model.get_theta(1), 0, 1)
         self.assertAlmostEqual(ma1.model.get_sigma_sq(), 0.25, 1)
+
+    def test_one_step_predictions(self):
+        ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
+        ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
+        ma = ARMA(ma_data)
+        ma._data = ma._data + ma._mean
+
+        self.assertEqual(ma.get_one_step_predictor(ma_model, 0), 0)
+        self.assertEqual(ma.get_one_step_predictor(ma_model, 1), 1.28)
+        self.assertEqual(ma.get_one_step_predictor(ma_model, 2), -0.22)
+        self.assertEqual(ma.get_one_step_predictor(ma_model, 3), 0.55)
+        self.assertEqual(ma.get_one_step_predictor(ma_model, 4), -1.63)
+        self.assertEqual(ma.get_one_step_predictor(ma_model, 5), -0.22)
+
+        ar_model = PureARMA(phi=[0.5, 0.2])
+        ar_data = [10, 10, 10, 10, 10, 10, -60]
+        ar = ARMA(ar_data)
+
+        self.assertEqual(ar.get_one_step_predictor(ar_model, 0), 0)
+        self.assertEqual(ar.get_one_step_predictor(ar_model, 1), 5)
+        self.assertEqual(ar.get_one_step_predictor(ar_model, 2), 7)
+        self.assertEqual(ar.get_one_step_predictor(ar_model, 3), 7)
+        self.assertEqual(ar.get_one_step_predictor(ar_model, 4), 7)
 
 if __name__ == '__main__':
     unittest.main()

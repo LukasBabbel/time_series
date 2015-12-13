@@ -29,6 +29,7 @@ class ARMA:
     def sample_acf(self, lag):
         return self.sample_autocovariance(lag) / self.sample_autocovariance(0)
 
+    #ToDo redo without append
     def sample_covariance_matrix(self, k):
         row = []
         for l in range(k):
@@ -145,7 +146,7 @@ class ARMA:
                 m = p + q
             self.model = self._fit_arma_durbin_levinson(p, q, m=m)
 
-    #test this
+    #ToDo test this
     def _fit_arma_durbin_levinson(self, p, q, m=0):
         m = max(m, p + q)
         ma_model = self._fit_ma_durbin_levinson(m)
@@ -163,26 +164,29 @@ class ARMA:
             theta.append(theta_j)
         return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
+    #ToDo
     def get_reduced_likelyhood(self, phi, theta, sigma_sq):
         thetas, nus = self.innovations_algorithm(phi, theta)
         x_hats = self.get_innovations(thetas, phi, theta)
         rs = nus / sigma_sq
         return np.log(self.weighted_sum_squares(x_hats, map(lambda x: 1 / x, rs)) / len(self._data)) + sum(rs) / len(self._data)
 
-    def innovations_algorithm(self):
-        nus = np.zeros(len(self._data))
-        thetas = [np.zeros(k + 1) for k in range(len(self._data))]
-        for n in range(len(self._data)):
-            for k in range(n):
-                thetas[n - 1][n - k - 1] = (self.sample_autocovariance(n - k) -
-                                            sum(thetas[k - 1][k - j - 1] * thetas[n - 1][n - j - 1] * nus[j] for j in range(k))
-                                            ) / nus[k]
-            nus[n] = self.sample_autocovariance(0) - sum(thetas[n - 1][n - j - 1] ** 2 * nus[j] for j in range(n))
-        return thetas, nus
-
-    #ToDo
-    def get_innovations(self, thetas, phi, theta):
-        return None
+    def get_one_step_predictor(self, model, n):
+        m = max(model.get_ar_order(), model.get_ma_order())
+        if n > len(self._data):
+            raise ValueError('One step prediction only possible for one step ahead')
+        predictions = np.zeros(max(n, m) + 1)
+        for k in range(1, m):
+            predictions[k] = np.sum(
+                model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, k + 1)
+            )
+        for k in range(m, n + 1):
+            predictions[k] = sum(
+                model.get_phi(j) * self._data[k - j] for j in range(1, model.get_ar_order() + 1)
+            ) + sum(
+                model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, model.get_ma_order() + 1)
+            )
+        return predictions[n]
 
     def weighted_sum_squares(self, values, weights):
         return np.sum(values ** 2 * weights)
