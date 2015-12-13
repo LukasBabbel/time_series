@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn
 
 
+#class for handling the ugly side (sample (p)acf, model fitting...)
 class ARMA:
     def __init__(self, data):
         data = np.array(data)
@@ -11,6 +12,10 @@ class ARMA:
 
         self._sample_auto_covariance = {}
         self.model = None
+
+        self._implemented_ar_methods = ('durbin_levinson', 'closed_form')
+        self._implemented_ma_methods = ('durbin_levinson')
+        self._implemented_arma_methods = ('durbin_levinson')
 
     def sample_autocovariance(self, lag):
         lag = abs(lag)
@@ -21,7 +26,7 @@ class ARMA:
             raise ValueError('lag out of range')
         return (1.0 / n) * sum(self._data[-(n - lag):] * self._data[:n - lag])
 
-    def sample_autococorrelation_function(self, lag):
+    def sample_acf(self, lag):
         return self.sample_autocovariance(lag) / self.sample_autocovariance(0)
 
     def sample_covariance_matrix(self, k):
@@ -33,7 +38,7 @@ class ARMA:
             matrix.append(row[1:1 + l][::-1] + row[:k - l])
         return np.matrix(matrix)
 
-    def partial_autocorrelation_function(self, k):
+    def sample_pacf(self, k):
         if k == 0:
             return 1
         Gamma_k = self.sample_covariance_matrix(k)
@@ -43,89 +48,135 @@ class ARMA:
     def plot_ACF(self, limit=None):
         if not limit:
             limit = len(self._data)
-        AC = []
+        AC = np.zeros(limit - 1)
         for lag in range(1, limit):
-            AC.append(self.sample_autococorrelation_function(lag))
+            AC[lag - 1] = self.sample_acf(lag)
         plt.bar(list(range(1, limit)), AC)
-        plt.axhline(1.96 / np.sqrt(len(self.data)), linestyle='--', alpha=0.6)
-        plt.axhline(-1.96 / np.sqrt(len(self.data)), linestyle='--', alpha=0.6)
+        plt.axhline(1.96 / np.sqrt(len(self._data)), linestyle='--', alpha=0.6)
+        plt.axhline(-1.96 / np.sqrt(len(self._data)), linestyle='--', alpha=0.6)
         plt.xlabel('lag')
         plt.ylabel('ACF')
 
     def plot_PACF(self, limit=None):
         if not limit:
             limit = len(self._data)
-        PAC = []
+        PAC = np.zeros(limit - 1)
         for lag in range(1, limit):
-            PAC.append(self.partial_autocorrelation_function(lag))
+            PAC[lag - 1] = self.sample_pacf(lag)
         plt.bar(list(range(1, limit)), PAC)
-        plt.axhline(1.96 / np.sqrt(len(self.data)), linestyle='--', alpha=0.6)
-        plt.axhline(-1.96 / np.sqrt(len(self.data)), linestyle='--', alpha=0.6)
+        plt.axhline(1.96 / np.sqrt(len(self._data)), linestyle='--', alpha=0.6)
+        plt.axhline(-1.96 / np.sqrt(len(self._data)), linestyle='--', alpha=0.6)
         plt.xlabel('lag')
         plt.ylabel('PACF')
 
-    def fit_ar(self, p):
+    def fit_ar(self, p, method='durbin_levinson'):
+        if method not in self._implemented_ar_methods:
+            raise ValueError('unknown method, implemented methods:' + str(self._implemented_ar_methods))
+
+        if p == 0:
+            self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
+        elif method == 'durbin_levinson':
+            self.model = self._fit_ar_durbin_levinson(p)
+        elif method == 'closed_form':
+            self.model = self._fit_ar_closed_form(p)
+
+    def _fit_ar_closed_form(self, p):
         Gamma = self.sample_covariance_matrix(p)
         gamma = np.matrix([self.sample_autocovariance(l) for l in range(1, p + 1)]).T
-        self.coefs = np.linalg.inv(Gamma) * gamma
-        self.sigma = self.sample_autocovariance(0) - self.coefs.T * gamma
+        coefs = (np.linalg.inv(Gamma) * gamma).getA1()
+        sigma = (self.sample_autocovariance(0) - coefs * gamma)[0, 0]
+        return PureARMA(phi=coefs, sigma_sq=sigma)
 
-    def fit_ar_durbin_levinson(self, p):
-        self.nu = np.zeros(p)
-        self.phi = [np.zeros(m + 1) for m in range(p)]
-        self.nu[0] = self.sample_autocovariance(0) * (1 - self.sample_autococorrelation_function(1) ** 2)
-        self.phi[0][0] = self.sample_autococorrelation_function(1)
+    def _fit_ar_durbin_levinson(self, p):
+        nu = np.zeros(p)
+        phi = [np.zeros(m + 1) for m in range(p)]
+        nu[0] = self.sample_autocovariance(0) * (1 - self.sample_acf(1) ** 2)
+        phi[0][0] = self.sample_acf(1)
         for m in range(1, p):
-            self.phi[m][m] = (self.sample_autocovariance(m + 1) - sum(self.phi[m - 1][j] * self.sample_autocovariance(m - j) for j in range(m))) / self.nu[m - 1]
+            phi[m][m] = (
+                self.sample_autocovariance(m + 1) -
+                sum(phi[m - 1][j] * self.sample_autocovariance(m - j) for j in range(m))
+            ) / nu[m - 1]
             for j in range(m):
-                self.phi[m][j] = self.phi[m - 1][j] - self.phi[m][m] * self.phi[m - 1][m - 1 - j]
-            self.nu[m] = self.nu[m - 1] * (1 - self.phi[m][m] ** 2)
+                phi[m][j] = phi[m - 1][j] - phi[m][m] * phi[m - 1][m - 1 - j]
+            nu[m] = nu[m - 1] * (1 - phi[m][m] ** 2)
+        return PureARMA(phi=phi[p - 1], sigma_sq=nu[p - 1])
 
-    def get_confidence_interval_ar_d_l(self, p):
-        return [1.96 * np.sqrt((self.nu[p - 1] * np.linalg.inv(self.sample_covariance_matrix(p)))[j, j]) / np.sqrt(len(self.data)) for j in range(p)]
+    #ToDo: Write tests
+    def get_confidence_interval_ar_d_l(self):
+        return [1.96 * np.sqrt((self.model.get_sigma_sq() * np.linalg.inv(self.sample_covariance_matrix(self.model.get_ar_order())))[j, j]) / np.sqrt(len(self._data)) for j in range(self.model.get_ar_order())]
 
-    def fit_ma_durbin_levinson(self, q):
-        self.nu_ma = np.zeros(q + 1)
-        self.theta_ma = [np.zeros(m + 1) for m in range(q)]
-        self.nu_ma[0] = self.sample_autocovariance(0)
+    def fit_ma(self, q, method='durbin_levinson'):
+        if method not in self._implemented_ma_methods:
+            raise ValueError('unknown method, implemented methods:' + str(self._implemented_ma_methods))
+
+        if q == 0:
+            self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
+        elif method == 'durbin_levinson':
+            self.model = self._fit_ma_durbin_levinson(q)
+
+    def _fit_ma_durbin_levinson(self, q):
+        nu = np.zeros(q + 1)
+        theta = [np.zeros(m + 1) for m in range(q)]
+        nu[0] = self.sample_autocovariance(0)
         for m in range(q):
             for k in range(m + 1):
-                self.theta_ma[m][m - k] = (self.sample_autocovariance(m - k + 1) - sum(self.theta_ma[m][m - j] * self.theta_ma[k - 1][k - j - 1] * self.nu_ma[j] for j in range(k))) / self.nu_ma[k]
-            self.nu_ma[m + 1] = self.sample_autocovariance(0) - sum(self.theta_ma[m][m - j] ** 2 * self.nu_ma[j] for j in range(m + 1))
+                theta[m][m - k] = (
+                    self.sample_autocovariance(m - k + 1) -
+                    sum(theta[m][m - j] * theta[k - 1][k - j - 1] * nu[j] for j in range(k))
+                ) / nu[k]
+            nu[m + 1] = self.sample_autocovariance(0) - sum(theta[m][m - j] ** 2 * nu[j] for j in range(m + 1))
+        return PureARMA(theta=theta[q - 1], sigma_sq=nu[q])
 
-    def get_confidence_interval_ma_d_l(self, q):
-        return [1.96 * np.sqrt(sum(self.theta_ma[q - 1][k] ** 2 for k in range(j + 1))) / np.sqrt(len(self.data)) for j in range(q)]
+    #ToDo write tests
+    def get_confidence_interval_ma_d_l(self):
+        return [1.96 * np.sqrt(sum(self.model.get_theta(k) ** 2 for k in range(j + 1))) / np.sqrt(len(self._data)) for j in range(self.model.get_ma_order())]
 
-    def fit_arma_preliminary(self, p, q, m=0):
+    def fit_arma(self, p, q, method='durbin_levinson', **kwargs):
+        if method not in self._implemented_arma_methods:
+            raise ValueError('unknown method, implemented methods:' + str(self._implemented_arma_methods))
+
+        if q == 0 and p == 0:
+            self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
+        elif method == 'durbin_levinson':
+            if 'm' in kwargs:
+                m = kwargs['m']
+            else:
+                m = p + q
+            self.model = self._fit_arma_durbin_levinson(p, q, m=m)
+
+    #test this
+    def _fit_arma_durbin_levinson(self, p, q, m=0):
         m = max(m, p + q)
-        self.fit_ma_durbin_levinson(m)
-        estimation_matrix = np.matrix([[self.theta_ma[m - 1][q + j - i - 1] for i in range(p)] for j in range(p)])
+        ma_model = self._fit_ma_durbin_levinson(m)
+        estimation_matrix = np.matrix([[ma_model.get_theta(q + j - i) for i in range(p)] for j in range(p)])
         estimation_matrix = np.linalg.inv(estimation_matrix)
-        self.phi = estimation_matrix * np.matrix([self.theta_ma[m - 1][q + i] for i in range(p)]).T
-        self.theta = []
+        phi = estimation_matrix * np.matrix([ma_model.get_theta(q + i + 1) for i in range(p)]).T
+        theta = []
         for j in range(1, q + 1):
-            theta_j = self.theta_ma[m - 1][j - 1]
+            theta_j = ma_model.get_theta(j)
             for i in range(1, min(j, p) + 1):
                 if i == j:
-                    theta_j -= self.phi[j - 1]
+                    theta_j -= phi[j - 1]
                 else:
-                    theta_j -= self.phi[i - 1] * self.theta_ma[m - 1][j - i - 1]
-            self.theta.append(theta_j)
-        self.theta = np.array(self.theta)
+                    theta_j -= phi[i - 1] * a_model.get_theta(j - i)
+            theta.append(theta_j)
+        return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
     def get_reduced_likelyhood(self, phi, theta, sigma_sq):
         thetas, nus = self.innovations_algorithm(phi, theta)
         x_hats = self.get_innovations(thetas, phi, theta)
         rs = nus / sigma_sq
-        return np.log(self.weighted_sum_squares(x_hats, map(lambda x: 1 / x, rs)) / len(self.data)) + sum(rs) / len(self.data)
+        return np.log(self.weighted_sum_squares(x_hats, map(lambda x: 1 / x, rs)) / len(self._data)) + sum(rs) / len(self._data)
 
     def innovations_algorithm(self):
-        nus = np.zeros(len(self.data))
-        thetas = [np.zeros(k + 1) for k in range(len(self.data))]
-        for n in range(len(self.data)):
+        nus = np.zeros(len(self._data))
+        thetas = [np.zeros(k + 1) for k in range(len(self._data))]
+        for n in range(len(self._data)):
             for k in range(n):
                 thetas[n - 1][n - k - 1] = (self.sample_autocovariance(n - k) -
-                                            sum(thetas[k - 1][k - j - 1] * thetas[n - 1][n - j - 1] * nus[j] for j in range(k))) / nus[k]
+                                            sum(thetas[k - 1][k - j - 1] * thetas[n - 1][n - j - 1] * nus[j] for j in range(k))
+                                            ) / nus[k]
             nus[n] = self.sample_autocovariance(0) - sum(thetas[n - 1][n - j - 1] ** 2 * nus[j] for j in range(n))
         return thetas, nus
 
@@ -134,7 +185,7 @@ class ARMA:
         return None
 
     def weighted_sum_squares(self, values, weights):
-        return sum(value ** 2 * weight for value, weight in zip(values, weights))
+        return np.sum(values ** 2 * weights)
 
 
 #class for handling the pure math side, not supposed to see data
@@ -144,8 +195,8 @@ class PureARMA:
             phi = []
         if theta is None:
             theta = []
-        self._phi = phi
-        self._theta = theta
+        self._phi = np.array(phi)
+        self._theta = np.array(theta)
         self._sigma_sq = sigma_sq
 
         self._p = len(phi)
@@ -161,12 +212,21 @@ class PureARMA:
     def get_params(self):
         return (self._phi, self._theta, self._sigma_sq)
 
+    def get_sigma_sq(self):
+        return self._sigma_sq
+
     def get_phi(self, k):
         if k == 0:
             return 1
         if k <= self._p:
             return self._phi[k - 1]
         return 0
+
+    def get_ar_order(self):
+        return self._p
+
+    def get_ma_order(self):
+        return self._q
 
     def _get_ar_coeff(self, k):
         if k == 0:

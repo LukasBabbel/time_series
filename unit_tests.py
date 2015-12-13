@@ -20,12 +20,10 @@ def simulate_arma(phi=None, theta=None, sigma=1, simulations=1000):
 
 
 class Test_PureARMA(unittest.TestCase):
-    def test_para_return(self):
-        model = PureARMA([1, 2, 3], [4, 5], 2)
-        self.assertEqual(model.get_params(), ([1, 2, 3], [4, 5], 2))
-
     def test_parameters(self):
-        model = PureARMA([-1, 2, 3], [4, 5], 2)
+        sigma_sq = 2
+        model = PureARMA([-1, 2, 3], [4, 5], sigma_sq)
+
         self.assertEqual(model.get_phi(2), 2)
         self.assertEqual(model.get_phi(0), 1)
         self.assertEqual(model.get_phi(4), 0)
@@ -33,6 +31,8 @@ class Test_PureARMA(unittest.TestCase):
         self.assertEqual(model.get_theta(2), 5)
         self.assertEqual(model.get_theta(0), 1)
         self.assertEqual(model.get_theta(3), 0)
+
+        self.assertEqual(model.get_sigma_sq(), sigma_sq)
 
     def test_ma_infty(self):
         model_ma = PureARMA([], [1, 2, 3])
@@ -98,6 +98,41 @@ class Test_ARMA(unittest.TestCase):
         for k in range(100):
             self.assertEqual(zero_ts.sample_autocovariance(k), 0)
 
+    def test_ar_fit_closed_form(self):
+        zeros = np.zeros(100)
+        zero_ts = ARMA(zeros)
+
+        np.random.seed(12345)
+        simulated_ar3 = simulate_arma(phi=[0.5, 0.1, 0.2], sigma=0.5)
+        ar3 = ARMA(simulated_ar3)
+
+        zero_ts.fit_ar(p=0, method='closed_form')
+        self.assertEqual(len(zero_ts.model.get_params()[0]), 0)
+
+        ar3.fit_ar(p=3, method='closed_form')
+        self.assertAlmostEqual(ar3.model.get_params()[0][0], 0.5, 1)
+        self.assertAlmostEqual(ar3.model.get_params()[0][1], 0.1, 1)
+        self.assertAlmostEqual(ar3.model.get_params()[0][2], 0.2, 1)
+
+    def test_ar_fit_durbin_levinson(self):
+        np.random.seed(12345)
+        simulated_ar3 = simulate_arma(phi=[0.5, 0.1, 0.2], sigma=0.5)
+        ar3 = ARMA(simulated_ar3)
+
+        ar3.fit_ar(p=3, method='durbin_levinson')
+        self.assertAlmostEqual(ar3.model.get_phi(1), 0.5, 1)
+        self.assertAlmostEqual(ar3.model.get_phi(2), 0.1, 1)
+        self.assertAlmostEqual(ar3.model.get_phi(3), 0.2, 1)
+        self.assertAlmostEqual(ar3.model.get_sigma_sq(), 0.25, 1)
+
+    def test_ma_fit_durbin_levinson(self):
+        np.random.seed(12345)
+        simulated_ma1 = simulate_arma(theta=[0], sigma=0.5, simulations=10000)
+        ma1 = ARMA(simulated_ma1)
+
+        ma1.fit_ma(q=1, method='durbin_levinson')
+        self.assertAlmostEqual(ma1.model.get_theta(1), 0, 1)
+        self.assertAlmostEqual(ma1.model.get_sigma_sq(), 0.25, 1)
 
 if __name__ == '__main__':
     unittest.main()
