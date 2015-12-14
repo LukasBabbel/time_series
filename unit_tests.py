@@ -92,6 +92,17 @@ class Test_PureARMA(unittest.TestCase):
 
         self.assertAlmostEqual(model_ma.get_r(0), (1 + 0.5 ** 2) / 3, 4)
 
+    def test_kappa_w(self):
+        theta = 0.4
+        sigma_sq = 3
+        ma_model = PureARMA(theta=[theta], sigma_sq=sigma_sq)
+
+        self.assertAlmostEqual(ma_model._kappa_w(1, 1), 1 + theta ** 2)
+        self.assertAlmostEqual(ma_model._kappa_w(2, 2), 1 + theta ** 2)
+        self.assertAlmostEqual(ma_model._kappa_w(3, 3), 1 + theta ** 2)
+        self.assertAlmostEqual(ma_model._kappa_w(1, 3), 0)
+        self.assertAlmostEqual(ma_model._kappa_w(1, 2), theta)
+
 
 class Test_ARMA(unittest.TestCase):
     def test_sample_autocovariance(self):
@@ -144,21 +155,24 @@ class Test_ARMA(unittest.TestCase):
         ma._data = ma._data + ma._mean
 
         self.assertEqual(ma.get_one_step_predictor(ma_model, 0), 0)
-        self.assertEqual(ma.get_one_step_predictor(ma_model, 1), 1.28)
-        self.assertEqual(ma.get_one_step_predictor(ma_model, 2), -0.22)
-        self.assertEqual(ma.get_one_step_predictor(ma_model, 3), 0.55)
-        self.assertEqual(ma.get_one_step_predictor(ma_model, 4), -1.63)
-        self.assertEqual(ma.get_one_step_predictor(ma_model, 5), -0.22)
+        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 1), 1.28, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 2), -0.22, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 3), 0.55, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 4), -1.63, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 5), -0.22, 2)
 
-        ar_model = PureARMA(phi=[0.5, 0.2])
-        ar_data = [10, 10, 10, 10, 10, 10, -60]
-        ar = ARMA(ar_data)
+        arma_data = [-1.1, 0.514, 0.116, -0.845, 0.872, -0.467, -0.977, -1.699, -1.228, -1.093]
+        arma_model = PureARMA(phi=[0.2], theta=[0.4], sigma_sq=1)
+        arma = ARMA(arma_data)
+        arma._data = arma._data + arma._mean
 
-        self.assertEqual(ar.get_one_step_predictor(ar_model, 0), 0)
-        self.assertEqual(ar.get_one_step_predictor(ar_model, 1), 5)
-        self.assertEqual(ar.get_one_step_predictor(ar_model, 2), 7)
-        self.assertEqual(ar.get_one_step_predictor(ar_model, 3), 7)
-        self.assertEqual(ar.get_one_step_predictor(ar_model, 4), 7)
+        self.assertEqual(arma.get_one_step_predictor(arma_model, 0), 0)
+        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 1), -0.534, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 2), 0.5068, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 3), -0.1321, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 4), -0.4539, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 5), 0.7046, 1)
+
 
 if __name__ == '__main__':
     unittest.main()

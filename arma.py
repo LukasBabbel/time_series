@@ -267,6 +267,10 @@ class PureARMA:
         lag = abs(lag)
         if lag in self._acf:
             return self._acf[lag]
+        if self.get_ar_order() == 0:
+            acovf = self._auto_cov_funct_ma(lag)
+            self._acf[lag] = acovf
+            return acovf
         if lag <= self._p:
             rhs = self._sigma_sq * np.array([sum(self.get_theta(j) * self.get_ma_infty_coef(j - k) for j in range(k, self._q + 1)) for k in range(self._p + 1)])
             lhs = np.zeros((self._p + 1, self._p + 1))
@@ -279,7 +283,17 @@ class PureARMA:
             for k, acf_k in enumerate(np.linalg.lstsq(lhs, rhs)[0]):
                 self._acf[k] = acf_k
             return self._acf[lag]
+        acovf = self._calculate_auto_cov_funct(lag)
+        self._acf[lag] = acovf
+        return acovf
+
+    def _calculate_auto_cov_funct(self, lag):
         return sum(self.get_phi(k) * self.auto_cov_funct(lag - k) for k in range(1, self._p + 1))
+
+    def _auto_cov_funct_ma(self, lag):
+        if lag > self.get_ma_order():
+            return 0
+        return self._sigma_sq * sum(self.get_theta(j) * self.get_theta(j + lag) for j in range(self._q + 1))
 
     #Brockwell, Davis p. 172
     def get_innovation_coef(self, n, j):
@@ -318,7 +332,7 @@ class PureARMA:
         if min(i, j) <= self._m and self._m < max(i, j) and max(i, j) <= 2 * self._m:
             return (
                 self.auto_cov_funct(i - j) -
-                sum(phi_r * self.auto_cov_funct(r - abs(i - j) + 1) for r, phi_r in enumerate(self._phi))
+                sum(self.get_phi(r) * self.auto_cov_funct(r - abs(i - j)) for r in range(1, self._p + 1))
             ) / self._sigma_sq
         if min(i, j) > self._m:
             return sum(self.get_theta(r) * self.get_theta(r + abs(i - j)) for r in range(self._q + 1))
