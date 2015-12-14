@@ -164,14 +164,18 @@ class ARMA:
             theta.append(theta_j)
         return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
-    #ToDo
-    def get_reduced_likelyhood(self, phi, theta, sigma_sq):
-        thetas, nus = self.innovations_algorithm(phi, theta)
-        x_hats = self.get_innovations(thetas, phi, theta)
-        rs = nus / sigma_sq
-        return np.log(self.weighted_sum_squares(x_hats, map(lambda x: 1 / x, rs)) / len(self._data)) + sum(rs) / len(self._data)
+    def get_training_predictions(self, model=None):
+        return self.get_one_step_predictors(len(self._data), model)
 
-    def get_one_step_predictor(self, model, n):
+    def get_one_step_predictor(self, n, model=None):
+        return self.get_one_step_predictors(n, model)[n]
+
+    def get_one_step_predictors(self, n, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
         m = max(model.get_ar_order(), model.get_ma_order())
         if n > len(self._data):
             raise ValueError('One step prediction only possible for one step ahead')
@@ -186,7 +190,7 @@ class ARMA:
             ) + sum(
                 model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, model.get_ma_order() + 1)
             )
-        return predictions[n]
+        return predictions
 
     def weighted_sum_squares(self, values, weights):
         return np.sum(values ** 2 * weights)

@@ -58,6 +58,7 @@ class Test_PureARMA(unittest.TestCase):
         model_332 = PureARMA([1, -0.25], [1], 3)
         model_ma = PureARMA([], [1, 2, 3])
         model_empty = PureARMA()
+        model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1])
 
         for k in range(20):
             self.assertAlmostEqual(model_332.auto_cov_funct(k), 3 * 2 ** -k * (32 / 3 + 8 * k))
@@ -69,9 +70,14 @@ class Test_PureARMA(unittest.TestCase):
         self.assertEqual(model_empty.auto_cov_funct(1), 0)
         self.assertEqual(model_empty.auto_cov_funct(10), 0)
 
+        self.assertAlmostEqual(model_arma23.auto_cov_funct(0), 7.17133, 5)
+        self.assertAlmostEqual(model_arma23.auto_cov_funct(1), 6.44139, 5)
+        self.assertAlmostEqual(model_arma23.auto_cov_funct(2), 5.06027, 5)
+
     def test_innovation_coefs(self):
         model_arma11 = PureARMA([0.2], [0.4])
         model_empty = PureARMA(sigma_sq=4)
+        model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1])
 
         self.assertAlmostEqual(model_arma11.get_innovation_coef(1, 1), 0.2909, 4)
         self.assertAlmostEqual(model_arma11.get_innovation_coef(2, 1), 0.3833, 4)
@@ -81,10 +87,17 @@ class Test_PureARMA(unittest.TestCase):
         self.assertEqual(model_empty.get_innovation_coef(1, 1), 0)
         self.assertEqual(model_empty.get_innovation_coef(9, 3), 0)
 
+        self.assertAlmostEqual(model_arma23.get_innovation_coef(1, 1), 0.8982, 4)
+        self.assertAlmostEqual(model_arma23.get_innovation_coef(2, 1), 1.3685, 4)
+        self.assertAlmostEqual(model_arma23.get_innovation_coef(2, 2), 0.7056, 4)
+        self.assertAlmostEqual(model_arma23.get_innovation_coef(3, 1), 0.4008, 4)
+
     def test_innovation_r(self):
         model_arma11 = PureARMA([0.2], [0.4])
         model_ma = PureARMA(theta=[0.5], sigma_sq=3)
+        model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1])
 
+        self.assertAlmostEqual(model_arma11.get_r(0), 1.375, 4)
         self.assertAlmostEqual(model_arma11.get_r(1), 1.0436, 4)
         self.assertAlmostEqual(model_arma11.get_r(2), 1.0067, 4)
         for n in range(6, 11):
@@ -92,16 +105,28 @@ class Test_PureARMA(unittest.TestCase):
 
         self.assertAlmostEqual(model_ma.get_r(0), (1 + 0.5 ** 2) / 3, 4)
 
+        self.assertAlmostEqual(model_arma23.get_r(0), 7.1713, 4)
+        self.assertAlmostEqual(model_arma23.get_r(1), 1.3856, 4)
+        self.assertAlmostEqual(model_arma23.get_r(2), 1.0057, 4)
+
     def test_kappa_w(self):
         theta = 0.4
         sigma_sq = 3
         ma_model = PureARMA(theta=[theta], sigma_sq=sigma_sq)
+        model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1])
 
         self.assertAlmostEqual(ma_model._kappa_w(1, 1), 1 + theta ** 2)
         self.assertAlmostEqual(ma_model._kappa_w(2, 2), 1 + theta ** 2)
         self.assertAlmostEqual(ma_model._kappa_w(3, 3), 1 + theta ** 2)
         self.assertAlmostEqual(ma_model._kappa_w(1, 3), 0)
         self.assertAlmostEqual(ma_model._kappa_w(1, 2), theta)
+
+        self.assertAlmostEqual(model_arma23._kappa_w(1, 1), 7.17133, 5)
+        self.assertAlmostEqual(model_arma23._kappa_w(1, 2), 6.44139, 5)
+        self.assertAlmostEqual(model_arma23._kappa_w(1, 3), 5.06027, 5)
+        self.assertAlmostEqual(model_arma23._kappa_w(1, 4), 0.1, 5)
+        self.assertAlmostEqual(model_arma23._kappa_w(1, 5), 0, 5)
+        self.assertAlmostEqual(model_arma23._kappa_w(2, 2), 7.17133, 5)
 
 
 class Test_ARMA(unittest.TestCase):
@@ -154,24 +179,41 @@ class Test_ARMA(unittest.TestCase):
         ma = ARMA(ma_data)
         ma._data = ma._data + ma._mean
 
-        self.assertEqual(ma.get_one_step_predictor(ma_model, 0), 0)
-        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 1), 1.28, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 2), -0.22, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 3), 0.55, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 4), -1.63, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(ma_model, 5), -0.22, 2)
+        self.assertEqual(ma.get_one_step_predictor(0, ma_model), 0)
+        self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model), 1.28, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(2, ma_model), -0.22, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(3, ma_model), 0.55, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(4, ma_model), -1.63, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(5, ma_model), -0.22, 2)
 
         arma_data = [-1.1, 0.514, 0.116, -0.845, 0.872, -0.467, -0.977, -1.699, -1.228, -1.093]
         arma_model = PureARMA(phi=[0.2], theta=[0.4], sigma_sq=1)
         arma = ARMA(arma_data)
         arma._data = arma._data + arma._mean
 
-        self.assertEqual(arma.get_one_step_predictor(arma_model, 0), 0)
-        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 1), -0.534, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 2), 0.5068, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 3), -0.1321, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 4), -0.4539, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(arma_model, 5), 0.7046, 1)
+        self.assertEqual(arma.get_one_step_predictor(0, arma_model), 0)
+        self.assertAlmostEqual(arma.get_one_step_predictor(1, arma_model), -0.534, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(2, arma_model), 0.5068, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(3, arma_model), -0.1321, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(4, arma_model), -0.4539, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(5, arma_model), 0.7046, 1)
+
+        data = [1, 2, 3, 4, 5]
+        empty_model = PureARMA()
+        empty = ARMA(data)
+        empty.model = empty_model
+
+        for k in range(6):
+            self.assertEqual(empty.get_one_step_predictor(k), 0)
+
+    def test_sum_squared(self):
+        values = np.array([1, 2, 3, 4])
+        weights = np.array([2, 1, 1, 3])
+        empty = np.array([])
+        arma = ARMA([1, 2])
+
+        self.assertEqual(arma.weighted_sum_squares(values, weights), 2 + 4 + 9 + 16 * 3)
+        self.assertEqual(arma.weighted_sum_squares(empty, empty), 0)
 
 
 if __name__ == '__main__':
