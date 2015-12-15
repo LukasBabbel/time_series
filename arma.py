@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn
+import scipy.optimize
 
 
 #class for handling the ugly side (sample (p)acf, model fitting...)
@@ -13,9 +14,9 @@ class ARMA:
         self._sample_auto_covariance = {}
         self.model = None
 
-        self._implemented_ar_methods = ('durbin_levinson', 'closed_form')
-        self._implemented_ma_methods = ('durbin_levinson')
-        self._implemented_arma_methods = ('durbin_levinson')
+        self._implemented_ar_methods = ('durbin_levinson', 'closed_form', 'min_reduced_likelihood', 'least_squares')
+        self._implemented_ma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
+        self._implemented_arma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
 
     def sample_autocovariance(self, lag):
         lag = abs(lag)
@@ -80,6 +81,10 @@ class ARMA:
             self.model = self._fit_ar_durbin_levinson(p)
         elif method == 'closed_form':
             self.model = self._fit_ar_closed_form(p)
+        elif method == 'min_reduced_likelihood':
+            self.model = self._fit_arma_max_likelihood(p=p)
+        elif method == 'least_squares':
+            self.model = self._fit_arma_least_squares(p=p)
 
     def _fit_ar_closed_form(self, p):
         Gamma = self.sample_covariance_matrix(p)
@@ -115,6 +120,10 @@ class ARMA:
             self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
         elif method == 'durbin_levinson':
             self.model = self._fit_ma_durbin_levinson(q)
+        elif method == 'min_reduced_likelihood':
+            self.model = self._fit_arma_max_likelihood(q=q)
+        elif method == 'least_squares':
+            self.model = self._fit_arma_least_squares(q=q)
 
     def _fit_ma_durbin_levinson(self, q):
         nu = np.zeros(q + 1)
@@ -145,6 +154,10 @@ class ARMA:
             else:
                 m = p + q
             self.model = self._fit_arma_durbin_levinson(p, q, m=m)
+        elif method == 'min_reduced_likelihood':
+            self.model = self._fit_arma_max_likelihood(p=p, q=q)
+        elif method == 'least_squares':
+            self.model = self._fit_arma_least_squares(p=p, q=q)
 
     #ToDo test this
     def _fit_arma_durbin_levinson(self, p, q, m=0):
@@ -192,8 +205,77 @@ class ARMA:
             )
         return predictions
 
-    def weighted_sum_squares(self, values, weights):
-        return np.sum(values ** 2 * weights)
+    def get_weighted_sum_squared_residuals(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        predictions = self.get_training_predictions(model=model)
+        rs = np.zeros(len(self._data))
+        for i in range(len(self._data)):
+            rs[i] = model.get_r(i)
+        return np.sum((self._data - predictions[:-1]) ** 2 / rs)
+
+    def _wsum_residuals_by_param(self, params, p, q):
+        phi = params[:p]
+        theta = params[p:p + q]
+        sigma_sq = params[-1:]
+        model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
+        return self.get_weighted_sum_squared_residuals(model=model)
+
+    def get_reduced_likelihood(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        rs = np.zeros(len(self._data))
+        for i in range(len(self._data)):
+            rs[i] = model.get_r(i)
+        return np.log(self.get_weighted_sum_squared_residuals(model=model) / len(self._data)) + np.sum(np.log(rs)) / len(self._data)
+
+    def _reduced_likelihood_by_param(self, params, p, q):
+        phi = params[:p]
+        theta = params[p:p + q]
+        sigma_sq = params[-1:]
+        model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
+        return self.get_reduced_likelihood(model=model)
+
+    #ToDo testing and error handling if minimizations fails
+    def _fit_arma_max_likelihood(self, p=0, q=0):
+        start_params = self._calculate_initial_coeffs(p, q)
+
+        def to_minimize(params):
+                    return self._reduced_likelihood_by_param(params, p, q)
+        opt_params = scipy.optimize.minimize(to_minimize, x0=start_params)['x']
+
+        opt_phi = opt_params[:p]
+        opt_theta = opt_params[p:p + q]
+        opt_sigma_sq = opt_params[-1:]
+        return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
+
+    #ToDo testing and error handling if minimizations fails
+    def _fit_arma_least_squares(self, p=0, q=0):
+        start_params = self._calculate_initial_coeffs(p, q)
+
+        def to_minimize(params):
+                    return self._wsum_residuals_by_param(params, p, q)
+        opt_params = scipy.optimize.minimize(to_minimize, x0=start_params)['x']
+
+        opt_phi = opt_params[:p]
+        opt_theta = opt_params[p:p + q]
+        opt_sigma_sq = opt_params[-1:]
+        return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
+
+    def _calculate_initial_coeffs(self, p, q):
+        if p == 0:
+            start_model = self._fit_ma_durbin_levinson(q)
+        elif q == 0:
+            start_model = self._fit_ar_durbin_levinson(p)
+        else:
+            start_model = self._fit_arma_durbin_levinson(p, q)
+        return np.hstack(start_model.get_params())
 
 
 #class for handling the pure math side, not supposed to see data

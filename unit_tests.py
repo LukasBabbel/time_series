@@ -94,6 +94,16 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma23.get_innovation_coef(2, 1), 1.3685, 4)
         self.assertAlmostEqual(model_arma23.get_innovation_coef(2, 2), 0.7056, 4)
 
+    def test_innovation_error(self):
+        model_ma = PureARMA(theta=[-0.9], sigma_sq=1)
+
+        self.assertAlmostEqual(model_ma.get_innovations_error(0), 1.81, 3)
+        self.assertAlmostEqual(model_ma.get_innovations_error(1), 1.362, 3)
+        self.assertAlmostEqual(model_ma.get_innovations_error(2), 1.215, 3)
+        self.assertAlmostEqual(model_ma.get_innovations_error(3), 1.144, 3)
+        self.assertAlmostEqual(model_ma.get_innovations_error(4), 1.102, 3)
+        self.assertAlmostEqual(model_ma.get_innovations_error(5), 1.075, 3)
+
     def test_innovation_r(self):
         model_arma11 = PureARMA([0.2], [0.4])
         model_ma = PureARMA(theta=[0.5], sigma_sq=3)
@@ -102,6 +112,9 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma11.get_r(0), 1.375, 4)
         self.assertAlmostEqual(model_arma11.get_r(1), 1.0436, 4)
         self.assertAlmostEqual(model_arma11.get_r(2), 1.0067, 4)
+        self.assertAlmostEqual(model_arma11.get_r(3), 1.0011, 4)
+        self.assertAlmostEqual(model_arma11.get_r(4), 1.0002, 4)
+        self.assertAlmostEqual(model_arma11.get_r(5), 1.0000, 4)
         for n in range(6, 11):
             self.assertAlmostEqual(model_arma11.get_r(n), 1, 4)
 
@@ -220,14 +233,26 @@ class Test_ARMA(unittest.TestCase):
         for k in range(6):
             self.assertEqual(empty.get_one_step_predictor(k), 0)
 
-    def test_sum_squared(self):
-        values = np.array([1, 2, 3, 4])
-        weights = np.array([2, 1, 1, 3])
-        empty = np.array([])
-        arma = ARMA([1, 2])
+    def test_weighted_sum_squared_residuals(self):
+        data = [-2, 0, 2]
+        arma = ARMA(data)
+        model = PureARMA()
+        ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
+        ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
+        ma = ARMA(ma_data)
+        ma._data = ma._data + ma._mean
 
-        self.assertEqual(arma.weighted_sum_squares(values, weights), 2 + 4 + 9 + 16 * 3)
-        self.assertEqual(arma.weighted_sum_squares(empty, empty), 0)
+        self.assertAlmostEqual(arma.get_weighted_sum_squared_residuals(model), 8)
+
+        self.assertAlmostEqual(ma.get_weighted_sum_squared_residuals(ma_model), 8.02, 1)
+
+    def test_reduced_likelihood(self):
+        ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
+        ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
+        ma = ARMA(ma_data)
+        ma._data = ma._data + ma._mean
+
+        self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 1)
 
 
 if __name__ == '__main__':
