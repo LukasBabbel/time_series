@@ -166,7 +166,8 @@ class ARMA:
         estimation_matrix = np.matrix([[ma_model.get_theta(q + j - i) for i in range(p)] for j in range(p)])
         estimation_matrix = np.linalg.inv(estimation_matrix)
         phi = estimation_matrix * np.matrix([ma_model.get_theta(q + i + 1) for i in range(p)]).T
-        theta = []
+        phi = np.array(phi).flatten()
+        theta = np.zeros(q)
         for j in range(1, q + 1):
             theta_j = ma_model.get_theta(j)
             for i in range(1, min(j, p) + 1):
@@ -174,7 +175,7 @@ class ARMA:
                     theta_j -= phi[j - 1]
                 else:
                     theta_j -= phi[i - 1] * a_model.get_theta(j - i)
-            theta.append(theta_j)
+            theta[j - 1] = theta_j
         return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
     def get_training_predictions(self, model=None):
@@ -220,7 +221,7 @@ class ARMA:
     def _wsum_residuals_by_param(self, params, p, q):
         phi = params[:p]
         theta = params[p:p + q]
-        sigma_sq = params[-1:]
+        sigma_sq = params[-1:][0]
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_weighted_sum_squared_residuals(model=model)
 
@@ -238,7 +239,7 @@ class ARMA:
     def _reduced_likelihood_by_param(self, params, p, q):
         phi = params[:p]
         theta = params[p:p + q]
-        sigma_sq = params[-1:]
+        sigma_sq = params[-1:][0]
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_reduced_likelihood(model=model)
 
@@ -252,7 +253,7 @@ class ARMA:
 
         opt_phi = opt_params[:p]
         opt_theta = opt_params[p:p + q]
-        opt_sigma_sq = opt_params[-1:]
+        opt_sigma_sq = opt_params[-1:][0]
         return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
 
     #ToDo testing and error handling if minimizations fails
@@ -265,7 +266,7 @@ class ARMA:
 
         opt_phi = opt_params[:p]
         opt_theta = opt_params[p:p + q]
-        opt_sigma_sq = opt_params[-1:]
+        opt_sigma_sq = opt_params[-1:][0]
         return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
 
     def _calculate_initial_coeffs(self, p, q):
@@ -331,6 +332,17 @@ class PureARMA:
         if k <= self._q:
             return self._theta[k - 1]
         return 0
+
+    def summary(self):
+        print('ARMA({}, {}) with Z_t ~ N(0, {})'.format(self.get_ar_order(), self.get_ma_order(), round(self.get_sigma_sq(), 2)))
+        if self.get_ar_order() > 0:
+            print('AR coefficients:')
+        for k in range(1, self.get_ar_order() + 1):
+            print('phi_{}: {}'.format(k, round(self.get_phi(k), 2)))
+        if self.get_ma_order() > 0:
+            print('MA coefficients:')
+        for k in range(1, self.get_ma_order() + 1):
+            print('theta_{}: {}'.format(k, round(self.get_theta(k), 2)))
 
     def get_ma_infty_coef(self, k):
         if k in self._ma_infty_coefs:
