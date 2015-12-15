@@ -181,7 +181,7 @@ class ARMA:
             raise ValueError('One step prediction only possible for one step ahead')
         predictions = np.zeros(max(n, m) + 1)
         for k in range(1, m):
-            predictions[k] = np.sum(
+            predictions[k] = sum(
                 model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, k + 1)
             )
         for k in range(m, n + 1):

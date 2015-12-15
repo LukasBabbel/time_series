@@ -59,6 +59,7 @@ class Test_PureARMA(unittest.TestCase):
         model_ma = PureARMA([], [1, 2, 3])
         model_empty = PureARMA()
         model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1])
+        arma_model = PureARMA(phi=[0.7], theta=[0.3], sigma_sq=4)
 
         for k in range(20):
             self.assertAlmostEqual(model_332.auto_cov_funct(k), 3 * 2 ** -k * (32 / 3 + 8 * k))
@@ -73,6 +74,8 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma23.auto_cov_funct(0), 7.17133, 5)
         self.assertAlmostEqual(model_arma23.auto_cov_funct(1), 6.44139, 5)
         self.assertAlmostEqual(model_arma23.auto_cov_funct(2), 5.06027, 5)
+
+        self.assertAlmostEqual(arma_model.auto_cov_funct(0), 4 * (1 + 2 * 0.3 * 0.7 + 0.3 ** 2) / (1 - 0.7 ** 2), 5)
 
     def test_innovation_coefs(self):
         model_arma11 = PureARMA([0.2], [0.4])
@@ -90,7 +93,6 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma23.get_innovation_coef(1, 1), 0.8982, 4)
         self.assertAlmostEqual(model_arma23.get_innovation_coef(2, 1), 1.3685, 4)
         self.assertAlmostEqual(model_arma23.get_innovation_coef(2, 2), 0.7056, 4)
-        self.assertAlmostEqual(model_arma23.get_innovation_coef(3, 1), 0.4008, 4)
 
     def test_innovation_r(self):
         model_arma11 = PureARMA([0.2], [0.4])
@@ -113,6 +115,7 @@ class Test_PureARMA(unittest.TestCase):
         theta = 0.4
         sigma_sq = 3
         ma_model = PureARMA(theta=[theta], sigma_sq=sigma_sq)
+        arma_model = PureARMA(phi=[0.7], theta=[0.3], sigma_sq=4)
         model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1])
 
         self.assertAlmostEqual(ma_model._kappa_w(1, 1), 1 + theta ** 2)
@@ -121,10 +124,21 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(ma_model._kappa_w(1, 3), 0)
         self.assertAlmostEqual(ma_model._kappa_w(1, 2), theta)
 
+        self.assertAlmostEqual(arma_model._kappa_w(1, 1), (1 + 2 * 0.3 * 0.7 + 0.3 ** 2) / (1 - 0.7 ** 2))
+        self.assertAlmostEqual(arma_model._kappa_w(2, 2), 1 + 0.3 ** 2)
+        self.assertAlmostEqual(arma_model._kappa_w(3, 3), 1 + 0.3 ** 2)
+        self.assertAlmostEqual(arma_model._kappa_w(1, 3), 0)
+        self.assertAlmostEqual(arma_model._kappa_w(1, 4), 0)
+        self.assertAlmostEqual(arma_model._kappa_w(1, 5), 0)
+        self.assertAlmostEqual(arma_model._kappa_w(20, 30), 0)
+        self.assertAlmostEqual(arma_model._kappa_w(1, 2), 0.3)
+        self.assertAlmostEqual(arma_model._kappa_w(3, 2), 0.3)
+        self.assertAlmostEqual(arma_model._kappa_w(16, 15), 0.3)
+
         self.assertAlmostEqual(model_arma23._kappa_w(1, 1), 7.17133, 5)
         self.assertAlmostEqual(model_arma23._kappa_w(1, 2), 6.44139, 5)
         self.assertAlmostEqual(model_arma23._kappa_w(1, 3), 5.06027, 5)
-        self.assertAlmostEqual(model_arma23._kappa_w(1, 4), 0.1, 5)
+        self.assertAlmostEqual(model_arma23._kappa_w(4, 7), 0.1, 5)
         self.assertAlmostEqual(model_arma23._kappa_w(1, 5), 0, 5)
         self.assertAlmostEqual(model_arma23._kappa_w(2, 2), 7.17133, 5)
 
