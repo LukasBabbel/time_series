@@ -117,7 +117,11 @@ class ARMA:
 
     #ToDo: Write tests
     def get_confidence_interval_ar_d_l(self):
-        return [1.96 * np.sqrt((self.model.get_sigma_sq() * np.linalg.inv(self.sample_covariance_matrix(self.model.get_ar_order())))[j, j]) / np.sqrt(len(self._data)) for j in range(self.model.get_ar_order())]
+        return [1.96 *
+                np.sqrt((self.model.get_sigma_sq() *
+                np.linalg.inv(self.sample_covariance_matrix(self.model.get_ar_order())))[j, j]) /
+                np.sqrt(len(self._data))
+                for j in range(self.model.get_ar_order())]
 
     def fit_ma(self, q, method='durbin_levinson'):
         if method not in self._implemented_ma_methods:
@@ -147,7 +151,10 @@ class ARMA:
 
     #ToDo write tests
     def get_confidence_interval_ma_d_l(self):
-        return [1.96 * np.sqrt(sum(self.model.get_theta(k) ** 2 for k in range(j + 1))) / np.sqrt(len(self._data)) for j in range(self.model.get_ma_order())]
+        return [1.96 *
+                np.sqrt(sum(self.model.get_theta(k) ** 2 for k in range(j + 1))) /
+                np.sqrt(len(self._data))
+                for j in range(self.model.get_ma_order())]
 
     def fit_arma(self, p, q, method='durbin_levinson', **kwargs):
         if method not in self._implemented_arma_methods:
@@ -377,7 +384,9 @@ class PureARMA:
             self._acf[lag] = acovf
             return acovf
         if lag <= self._p:
-            rhs = self._sigma_sq * np.array([sum(self.get_theta(j) * self.get_ma_infty_coef(j - k) for j in range(k, self._q + 1)) for k in range(self._p + 1)])
+            rhs = self._sigma_sq * np.array([
+                sum(self.get_theta(j) * self.get_ma_infty_coef(j - k) for j in range(k, self._q + 1)) for k in range(self._p + 1)
+            ])
             lhs = np.zeros((self._p + 1, self._p + 1))
             for t in range(self._p + 1):
                 lhs[0][t] = self._get_ar_coeff(t)
@@ -414,7 +423,10 @@ class PureARMA:
         k = n - j
         return (
             self._kappa_w(n + 1, k + 1) -
-            sum(self.get_innovation_coef(k, k - i) * self.get_innovation_coef(n, n - i) * self.get_innovations_error(i) for i in range(k))
+            sum(self.get_innovation_coef(k, k - i) *
+                self.get_innovation_coef(n, n - i) *
+                self.get_innovations_error(i)
+                for i in range(k))
         ) / self.get_innovations_error(k)
 
     def get_innovations_error(self, n):
@@ -428,7 +440,11 @@ class PureARMA:
         return self.get_innovations_error(n) / self._sigma_sq
 
     def _calculate_innovation_error(self, n):
-        return self._kappa_w(n + 1, n + 1) - sum(self.get_innovation_coef(n, n - j) ** 2 * self.get_innovations_error(j) for j in range(n))
+        return self._kappa_w(n + 1, n + 1) - sum(
+            self.get_innovation_coef(n, n - j) ** 2 *
+            self.get_innovations_error(j)
+            for j in range(n)
+        )
 
     #Brockwell, Davis p. 175
     def _kappa_w(self, i, j):
@@ -447,18 +463,27 @@ class PureARMA:
 #class for transformations and backtransformations
 class Transform:
     def __init__(self, d=0, mean=0, box_cox=None):
+        if d < 0:
+            raise ValueError('can not have negative differencing coefficient!')
+        if box_cox is not None:
+            if box_cox < 0:
+                raise ValueError('box cox transformation only defined for non negative lambda')
         self._d = d
         self._mean = mean
         self._box_cox = box_cox
 
     def transform(self, data):
         data = np.array(data)
+        if self._box_cox is not None:
+            data = self._box_cox_transform(data)
         data = self._subtract_mean(data, self._mean)
         return data
 
     def backtransform(self, data):
         data = np.array(data)
         data = self._add_mean(data, self._mean)
+        if self._box_cox is not None:
+            data = self._box_cox_backtransform(data)
         return data
 
     def _add_mean(self, data, mean):
@@ -466,3 +491,13 @@ class Transform:
 
     def _subtract_mean(self, data, mean):
         return data - mean
+
+    def _box_cox_transform(self, data):
+        if self._box_cox == 0:
+            return np.log(data)
+        return (data ** self._box_cox - 1) / self._box_cox
+
+    def _box_cox_backtransform(self, data):
+        if self._box_cox == 0:
+            return np.exp(data)
+        return (data * self._box_cox + 1) ** (1 / self._box_cox)

@@ -294,12 +294,52 @@ class Test_ARMA(unittest.TestCase):
 
 
 class Test_Transform(unittest.TestCase):
-    def test_init(self):
-        transf = Transform(d=3, mean=2.3, box_cox=0.5)
+    def test_box_cox_transform(self):
+        transf_ln = Transform(d=0, mean=0, box_cox=0)
+        transf_sqrt = Transform(d=0, mean=0, box_cox=0.5)
+        transf_mean = Transform(d=0, mean=1, box_cox=0.5)
 
-        self.assertEqual(transf._d, 3)
-        self.assertEqual(transf._mean, 2.3)
-        self.assertEqual(transf._box_cox, 0.5)
+        data_ln = np.array([1, 2, 4.2, 0.002])
+        data_sqrt = np.array([0, 1, 4, 2, 9])
+        empty = np.array([])
+
+        np.testing.assert_almost_equal(transf_ln._box_cox_transform(data_ln).tolist(), [np.log(x) for x in data_ln])
+        np.testing.assert_almost_equal(transf_ln._box_cox_transform(empty).tolist(), [])
+
+        np.testing.assert_almost_equal(transf_sqrt._box_cox_transform(data_sqrt).tolist(), [-2, 0, 2, (2 ** 0.5 - 1) * 2, 4])
+
+    def test_box_cox_backtransform(self):
+        transf_ln = Transform(d=0, mean=0, box_cox=0)
+        transf_sqrt = Transform(d=0, mean=0, box_cox=0.5)
+        transf_mean = Transform(d=0, mean=1, box_cox=0.5)
+
+        data_ln = [1, 2, 4.2, 0.002]
+        data_ln_transf = np.array([np.log(x) for x in data_ln])
+        data_sqrt = [0, 1, 4, 2, 9]
+        data_sqrt_transf = np.array([-2, 0, 2, (2 ** 0.5 - 1) * 2, 4])
+        empty = np.array([])
+
+        np.testing.assert_almost_equal(transf_ln._box_cox_backtransform(data_ln_transf).tolist(), data_ln)
+        np.testing.assert_almost_equal(transf_ln._box_cox_backtransform(empty).tolist(), [])
+
+        np.testing.assert_almost_equal(transf_sqrt._box_cox_backtransform(data_sqrt_transf).tolist(), data_sqrt)
+
+    def test_transform(self):
+        transf_mean = Transform(d=0, mean=1, box_cox=0.5)
+        data_sqrt = [0, 1, 4, 2, 9]
+        empty = []
+
+        np.testing.assert_almost_equal(transf_mean.transform(data_sqrt).tolist(), [-3, -1, 1, (2 ** 0.5 - 1) * 2 - 1, 3])
+        np.testing.assert_almost_equal(transf_mean.transform(empty).tolist(), [])
+
+    def test_backtransform(self):
+        transf_mean = Transform(d=0, mean=1, box_cox=0.5)
+        data_sqrt = np.array([0, 1, 4, 2, 9])
+        data_sqrt_transf = [-3, -1, 1, (2 ** 0.5 - 1) * 2 - 1, 3]
+        empty = np.array([])
+
+        np.testing.assert_almost_equal(transf_mean.backtransform(data_sqrt_transf).tolist(), data_sqrt)
+        np.testing.assert_almost_equal(transf_mean.backtransform(empty).tolist(), [])
 
 
 if __name__ == '__main__':
