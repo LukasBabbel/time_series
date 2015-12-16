@@ -6,10 +6,17 @@ import scipy.optimize
 
 #class for handling the ugly side (sample (p)acf, model fitting...)
 class ARMA:
-    def __init__(self, data):
-        data = np.array(data)
-        self._mean = data.mean()
-        self._data = data - self._mean
+    def __init__(self, data, d=0, subtract_mean=True, box_cox=None):
+        self._mean = np.mean(data)
+        mean = 0
+        if subtract_mean:
+            mean = self._mean
+
+        self._Transform = Transform(d=d, mean=mean, box_cox=box_cox)
+        self._transform = self._Transform.transform
+        self._backtransform = self._Transform.backtransform
+
+        self._data = self._transform(data)
 
         self._sample_auto_covariance = {}
         self.model = None
@@ -179,7 +186,7 @@ class ARMA:
         return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
     def get_training_predictions(self, model=None):
-        return self.get_one_step_predictors(len(self._data), model)
+        return self._backtransform(self.get_one_step_predictors(len(self._data), model))
 
     def get_one_step_predictor(self, n, model=None):
         return self.get_one_step_predictors(n, model)[n]
@@ -435,3 +442,27 @@ class PureARMA:
         if min(i, j) > self._m:
             return sum(self.get_theta(r) * self.get_theta(r + abs(i - j)) for r in range(self._q + 1))
         return 0
+
+
+#class for transformations and backtransformations
+class Transform:
+    def __init__(self, d=0, mean=0, box_cox=None):
+        self._d = d
+        self._mean = mean
+        self._box_cox = box_cox
+
+    def transform(self, data):
+        data = np.array(data)
+        data = self._subtract_mean(data, self._mean)
+        return data
+
+    def backtransform(self, data):
+        data = np.array(data)
+        data = self._add_mean(data, self._mean)
+        return data
+
+    def _add_mean(self, data, mean):
+        return data + mean
+
+    def _subtract_mean(self, data, mean):
+        return data - mean

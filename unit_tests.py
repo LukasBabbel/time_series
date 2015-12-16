@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from arma import PureARMA, ARMA
+from arma import PureARMA, ARMA, Transform
 
 
 def simulate_arma(phi=None, theta=None, sigma=1, simulations=1000):
@@ -203,8 +203,7 @@ class Test_ARMA(unittest.TestCase):
     def test_one_step_predictions(self):
         ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
         ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
-        ma = ARMA(ma_data)
-        ma._data = ma._data + ma._mean
+        ma = ARMA(ma_data, subtract_mean=False)
 
         self.assertEqual(ma.get_one_step_predictor(0, ma_model), 0)
         self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model), 1.28, 2)
@@ -215,8 +214,7 @@ class Test_ARMA(unittest.TestCase):
 
         arma_data = [-1.1, 0.514, 0.116, -0.845, 0.872, -0.467, -0.977, -1.699, -1.228, -1.093]
         arma_model = PureARMA(phi=[0.2], theta=[0.4], sigma_sq=1)
-        arma = ARMA(arma_data)
-        arma._data = arma._data + arma._mean
+        arma = ARMA(arma_data, subtract_mean=False)
 
         self.assertEqual(arma.get_one_step_predictor(0, arma_model), 0)
         self.assertAlmostEqual(arma.get_one_step_predictor(1, arma_model), -0.534, 1)
@@ -239,8 +237,7 @@ class Test_ARMA(unittest.TestCase):
         model = PureARMA()
         ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
         ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
-        ma = ARMA(ma_data)
-        ma._data = ma._data + ma._mean
+        ma = ARMA(ma_data, subtract_mean=False)
 
         self.assertAlmostEqual(arma.get_weighted_sum_squared_residuals(model), 8)
 
@@ -253,6 +250,56 @@ class Test_ARMA(unittest.TestCase):
         ma._data = ma._data + ma._mean
 
         self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 1)
+
+    def test_transform_mean(self):
+        data = [-1, 0.5, 0, -0.5, 1]
+        empty = []
+        mean_zero = ARMA([1, -1])
+        pos_mean = ARMA([2])
+        neg_fraction_mean = ARMA([-0.5])
+
+        self.assertListEqual(mean_zero._transform(data).tolist(), data)
+        self.assertListEqual(pos_mean._transform(data).tolist(), [-3, -1.5, -2, -2.5, -1])
+        self.assertListEqual(neg_fraction_mean._transform(data).tolist(), [-0.5, 1, 0.5, 0, 1.5])
+
+        self.assertListEqual(mean_zero._transform(empty).tolist(), empty)
+        self.assertListEqual(pos_mean._transform(empty).tolist(), empty)
+        self.assertListEqual(neg_fraction_mean._transform(empty).tolist(), empty)
+
+    def test_back_transform_mean(self):
+        data = [-1, 0.5, 0, -0.5, 1]
+        empty = []
+        mean_zero = ARMA([1, -1])
+        pos_mean = ARMA([2])
+        neg_fraction_mean = ARMA([-0.5])
+
+        self.assertListEqual(mean_zero._backtransform(data).tolist(), data)
+        self.assertListEqual(pos_mean._backtransform(data).tolist(), [1, 2.5, 2, 1.5, 3])
+        self.assertListEqual(neg_fraction_mean._backtransform(data).tolist(), [-1.5, 0, -0.5, -1, 0.5])
+
+    def test_transform_backtransform(self):
+        data = [-1, 0.5, 0, -0.5, 1]
+        empty = []
+        mean_zero = ARMA([1, -1])
+        pos_mean = ARMA([2])
+        neg_fraction_mean = ARMA([-0.5])
+
+        self.assertListEqual(mean_zero._backtransform(mean_zero._transform(data)).tolist(), data)
+        self.assertListEqual(pos_mean._backtransform(pos_mean._transform(data)).tolist(), data)
+        self.assertListEqual(neg_fraction_mean._backtransform(neg_fraction_mean._transform(data)).tolist(), data)
+
+        self.assertListEqual(mean_zero._backtransform(mean_zero._transform(empty)).tolist(), empty)
+        self.assertListEqual(pos_mean._backtransform(pos_mean._transform(empty)).tolist(), empty)
+        self.assertListEqual(neg_fraction_mean._backtransform(neg_fraction_mean._transform(empty)).tolist(), empty)
+
+
+class Test_Transform(unittest.TestCase):
+    def test_init(self):
+        transf = Transform(d=3, mean=2.3, box_cox=0.5)
+
+        self.assertEqual(transf._d, 3)
+        self.assertEqual(transf._mean, 2.3)
+        self.assertEqual(transf._box_cox, 0.5)
 
 
 if __name__ == '__main__':
