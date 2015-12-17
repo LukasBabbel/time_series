@@ -246,10 +246,18 @@ class Test_ARMA(unittest.TestCase):
     def test_reduced_likelihood(self):
         ma_model = PureARMA(theta=[-0.9], sigma_sq=0.5)
         ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
-        ma = ARMA(ma_data)
-        ma._data = ma._data + ma._mean
+        ma = ARMA(ma_data, subtract_mean=False)
 
-        self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 1)
+        self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 3)
+
+    def test_likelihood(self):
+        ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
+        ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
+        ma = ARMA(ma_data, subtract_mean=False)
+
+        likelihood = 2 * np.pi
+
+        self.assertAlmostEqual(ma.get_likelihood(ma_model), 0.0035943790355147075, 5)
 
     def test_transform_mean(self):
         data = [-1, 0.5, 0, -0.5, 1]

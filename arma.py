@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import seaborn
 import scipy.optimize
 
-limit = 50
+#max number of steps going back in prediction for noise estimate
+LIMIT = 50
 
 
 #class for handling the ugly side (sample (p)acf, model fitting...)
@@ -218,7 +219,7 @@ class ARMA:
                 model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, k + 1)
             )
         for k in range(m, n + 1):
-            k_limited = min(limit + m, k)
+            k_limited = min(LIMIT + m, k)
             predictions[k] = sum(
                 model.get_phi(j) * self._data[k - j] for j in range(1, model.get_ar_order() + 1)
             ) + sum(
@@ -233,9 +234,12 @@ class ARMA:
             else:
                 model = self.model
         predictions = self.get_training_predictions(model=model)
-        rs = np.zeros(len(self._data))
-        for i in range(len(self._data)):
-            rs[i] = model.get_r(i)
+        rs = np.ones(len(self._data))
+        for j in range(len(self._data)):
+            r = model.get_r(j)
+            if round(r, 7) == 1:
+                break
+            rs[j] = r
         return np.sum((self._data - predictions[:-1]) ** 2 / rs)
 
     def _wsum_residuals_by_param(self, params, p, q):
@@ -244,6 +248,23 @@ class ARMA:
         sigma_sq = 1
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_weighted_sum_squared_residuals(model=model)
+
+    def get_likelihood(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        rs = np.ones(len(self._data))
+        for j in range(len(self._data)):
+            r = model.get_r(j)
+            if round(r, 7) == 1:
+                break
+            rs[j] = r
+        factor_1 = (2 * np.pi * model.get_sigma_sq()) ** (-len(self._data) / 2)
+        factor_2 = rs.prod() ** (-0.5)
+        factor_3 = np.exp(-0.5 * self.get_weighted_sum_squared_residuals(model=model) / model.get_sigma_sq())
+        return factor_1 * factor_2 * factor_3
 
     def get_reduced_likelihood(self, model=None):
         if model is None:
@@ -297,6 +318,17 @@ class ARMA:
         else:
             start_model = self._fit_arma_durbin_levinson(p, q)
         return np.hstack(start_model.get_params())[:-1]
+
+    #ToDo test
+    def get_aicc(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        return -2 * np.log(self.get_likelihood(model=model)) +\
+            2 * (model.get_ar_order() + model.get_ma_order() + 1) * len(self._data) /\
+            (len(self._data) - model.get_ar_order() - model.get_ma_order() - 2)
 
 
 #class for handling the pure math side, not supposed to see data
