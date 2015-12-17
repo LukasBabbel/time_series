@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import seaborn
 import scipy.optimize
 
+limit = 50
+
 
 #class for handling the ugly side (sample (p)acf, model fitting...)
 class ARMA:
@@ -12,9 +14,7 @@ class ARMA:
         if subtract_mean:
             mean = self._mean
 
-        self._Transform = Transform(d=d, mean=mean, box_cox=box_cox)
-        self._transform = self._Transform.transform
-        self._backtransform = self._Transform.backtransform
+        self.set_transformation(Transform(d=d, mean=mean, box_cox=box_cox))
 
         self._data = self._transform(data)
 
@@ -24,6 +24,11 @@ class ARMA:
         self._implemented_ar_methods = ('durbin_levinson', 'closed_form', 'min_reduced_likelihood', 'least_squares')
         self._implemented_ma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
         self._implemented_arma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
+
+    def set_transformation(self, transformation):
+        self._transformation = transformation
+        self._transform = transformation.transform
+        self._backtransform = transformation.backtransform
 
     def sample_autocovariance(self, lag):
         lag = abs(lag)
@@ -193,7 +198,7 @@ class ARMA:
         return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
     def get_training_predictions(self, model=None):
-        return self._backtransform(self.get_one_step_predictors(len(self._data), model))
+        return self.get_one_step_predictors(len(self._data), model)
 
     def get_one_step_predictor(self, n, model=None):
         return self.get_one_step_predictors(n, model)[n]
@@ -213,10 +218,11 @@ class ARMA:
                 model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, k + 1)
             )
         for k in range(m, n + 1):
+            k_limited = min(limit + m, k)
             predictions[k] = sum(
                 model.get_phi(j) * self._data[k - j] for j in range(1, model.get_ar_order() + 1)
             ) + sum(
-                model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, model.get_ma_order() + 1)
+                model.get_innovation_coef(k_limited, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, model.get_ma_order() + 1)
             )
         return predictions
 
