@@ -241,7 +241,7 @@ class ARMA:
     def _wsum_residuals_by_param(self, params, p, q):
         phi = params[:p]
         theta = params[p:p + q]
-        sigma_sq = params[-1:][0]
+        sigma_sq = 1
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_weighted_sum_squared_residuals(model=model)
 
@@ -259,7 +259,7 @@ class ARMA:
     def _reduced_likelihood_by_param(self, params, p, q):
         phi = params[:p]
         theta = params[p:p + q]
-        sigma_sq = params[-1:][0]
+        sigma_sq = 1
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_reduced_likelihood(model=model)
 
@@ -273,7 +273,7 @@ class ARMA:
 
         opt_phi = opt_params[:p]
         opt_theta = opt_params[p:p + q]
-        opt_sigma_sq = opt_params[-1:][0]
+        opt_sigma_sq = self._wsum_residuals_by_param(opt_params, p, q) / len(self._data)
         return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
 
     #ToDo testing and error handling if minimizations fails
@@ -286,7 +286,7 @@ class ARMA:
 
         opt_phi = opt_params[:p]
         opt_theta = opt_params[p:p + q]
-        opt_sigma_sq = opt_params[-1:][0]
+        opt_sigma_sq = self._wsum_residuals_by_param(opt_params, p, q) / len(self._data)
         return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
 
     def _calculate_initial_coeffs(self, p, q):
@@ -296,7 +296,7 @@ class ARMA:
             start_model = self._fit_ar_durbin_levinson(p)
         else:
             start_model = self._fit_arma_durbin_levinson(p, q)
-        return np.hstack(start_model.get_params())
+        return np.hstack(start_model.get_params())[:-1]
 
 
 #class for handling the pure math side, not supposed to see data
@@ -431,11 +431,14 @@ class PureARMA:
             self._kappa_w(n + 1, k + 1) -
             sum(self.get_innovation_coef(k, k - i) *
                 self.get_innovation_coef(n, n - i) *
-                self.get_innovations_error(i)
+                self._get_innovations_error_w(i)
                 for i in range(k))
-        ) / self.get_innovations_error(k)
+        ) / self._get_innovations_error_w(k)
 
     def get_innovations_error(self, n):
+        return self._get_innovations_error_w(n) * self.get_sigma_sq()
+
+    def _get_innovations_error_w(self, n):
         if n in self._innovation_errors:
             return self._innovation_errors[n]
         error = self._calculate_innovation_error(n)
@@ -443,12 +446,12 @@ class PureARMA:
         return error
 
     def get_r(self, n):
-        return self.get_innovations_error(n) / self._sigma_sq
+        return self._get_innovations_error_w(n)
 
     def _calculate_innovation_error(self, n):
         return self._kappa_w(n + 1, n + 1) - sum(
             self.get_innovation_coef(n, n - j) ** 2 *
-            self.get_innovations_error(j)
+            self._get_innovations_error_w(j)
             for j in range(n)
         )
 
