@@ -35,23 +35,29 @@ class ARMA:
         lag = abs(lag)
         if lag in self._sample_auto_covariance:
             return self._sample_auto_covariance[lag]
-        n = len(self._data)
-        if lag >= n:
+        if lag >= len(self._data):
             raise ValueError('lag out of range')
-        return (1.0 / n) * sum(self._data[-(n - lag):] * self._data[:n - lag])
+        sample_autocov = self._compute_sample_autocovariance(lag)
+        self._sample_auto_covariance[lag] = sample_autocov
+        return sample_autocov
+
+    def _compute_sample_autocovariance(self, lag):
+        n = len(self._data)
+        if self._transformation.is_mean_corrected():
+            mean = 0
+        else:
+            mean = self._mean
+        return np.sum((self._data[-(n - lag):] - mean) * (self._data[:n - lag] - mean)) / n
 
     def sample_acf(self, lag):
         return self.sample_autocovariance(lag) / self.sample_autocovariance(0)
 
-    #ToDo redo without append
     def sample_covariance_matrix(self, k):
-        row = []
-        for l in range(k):
-            row.append(self.sample_autocovariance(l))
-        matrix = []
-        for l in range(k):
-            matrix.append(row[1:1 + l][::-1] + row[:k - l])
-        return np.matrix(matrix)
+        cov_matrix = np.matrix(np.zeros([k, k]), copy=False)
+        for i in range(k):
+            for j in range(k):
+                cov_matrix[i, j] = self.sample_autocovariance(i - j)
+        return cov_matrix
 
     def sample_pacf(self, k):
         if k == 0:
@@ -526,6 +532,12 @@ class Transform:
         if self._box_cox is not None:
             data = self._box_cox_backtransform(data)
         return data
+
+    def is_mean_corrected(self):
+        if self._mean == 0:
+            return False
+        else:
+            return True
 
     def _add_mean(self, data, mean):
         return data + mean

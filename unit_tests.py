@@ -75,7 +75,7 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma23.auto_cov_funct(1), 6.44139, 5)
         self.assertAlmostEqual(model_arma23.auto_cov_funct(2), 5.06027, 5)
 
-        self.assertAlmostEqual(arma_model.auto_cov_funct(0), 4 * (1 + 2 * 0.3 * 0.7 + 0.3 ** 2) / (1 - 0.7 ** 2), 5)
+        self.assertAlmostEqual(arma_model.auto_cov_funct(0), 4 * (1 + 2 * 0.3 * 0.7 + 0.3 ** 2) / (1 - 0.7 ** 2), 6)
 
     def test_innovation_coefs(self):
         model_arma11 = PureARMA([0.2], [0.4])
@@ -116,9 +116,9 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma11.get_r(4), 1.0002, 4)
         self.assertAlmostEqual(model_arma11.get_r(5), 1.0000, 4)
         for n in range(6, 11):
-            self.assertAlmostEqual(model_arma11.get_r(n), 1, 4)
+            self.assertAlmostEqual(model_arma11.get_r(n), 1, 5)
 
-        self.assertAlmostEqual(model_ma.get_r(0), (1 + 0.5 ** 2), 4)
+        self.assertAlmostEqual(model_ma.get_r(0), (1 + 0.5 ** 2), 8)
 
         self.assertAlmostEqual(model_arma23.get_r(0), 7.1713, 4)
         self.assertAlmostEqual(model_arma23.get_r(1), 1.3856, 4)
@@ -159,10 +159,77 @@ class Test_PureARMA(unittest.TestCase):
 class Test_ARMA(unittest.TestCase):
     def test_sample_autocovariance(self):
         zeros = np.zeros(100)
-        zero_ts = ARMA(zeros)
+        zero_ts = ARMA(zeros, subtract_mean=True)
+
+        ones = np.ones(10)
+        ones_ts_mean_corrected = ARMA(ones, subtract_mean=True)
+        ones_ts_mean_uncorrected = ARMA(ones, subtract_mean=False)
+
+        integers = [1, 2, 3, 4, 5]
+        integer_ts = ARMA(integers)
 
         for k in range(100):
             self.assertEqual(zero_ts.sample_autocovariance(k), 0)
+
+        for k in range(10):
+            self.assertEqual(ones_ts_mean_corrected.sample_autocovariance(k), 0)
+            self.assertEqual(ones_ts_mean_corrected.sample_autocovariance(-k), 0)
+
+        for k in range(10):
+            self.assertEqual(ones_ts_mean_uncorrected.sample_autocovariance(-k), 0)
+            self.assertEqual(ones_ts_mean_uncorrected.sample_autocovariance(k), 0)
+
+        self.assertAlmostEqual(integer_ts.sample_autocovariance(0), 2, 10)
+        self.assertAlmostEqual(integer_ts.sample_autocovariance(1), 0.8, 10)
+        self.assertAlmostEqual(integer_ts.sample_autocovariance(2), -0.2, 10)
+        self.assertAlmostEqual(integer_ts.sample_autocovariance(3), -0.8, 10)
+        self.assertAlmostEqual(integer_ts.sample_autocovariance(4), -0.8, 10)
+
+    def test_sample_acf(self):
+        integers = [1, 2, 3, 4, 5]
+        integer_ts = ARMA(integers)
+
+        self.assertAlmostEqual(integer_ts.sample_acf(0), 1, 10)
+        self.assertAlmostEqual(integer_ts.sample_acf(-1), 0.4, 10)
+        self.assertAlmostEqual(integer_ts.sample_acf(2), -0.1, 10)
+        self.assertAlmostEqual(integer_ts.sample_acf(-3), -0.4, 10)
+        self.assertAlmostEqual(integer_ts.sample_acf(4), -0.4, 10)
+
+    def test_sample_covariance_matrix(self):
+        integers = [1, 2, 3, 4, 5]
+        integer_ts = ARMA(integers)
+        cov_mat_1 = np.matrix([2])
+        cov_mat_2 = np.matrix(
+            [[2, 0.8],
+            [0.8, 2]])
+        cov_mat_3 = np.matrix(
+            [[2, 0.8, -0.2],
+            [0.8, 2, 0.8],
+            [-0.2, 0.8, 2]])
+        cov_mat_4 = np.matrix(
+            [[2, 0.8, -0.2, -0.8],
+            [0.8, 2, 0.8, -0.2],
+            [-0.2, 0.8, 2, 0.8],
+            [-0.8, -0.2, 0.8, 2]])
+        cov_mat_5 = np.matrix(
+            [[2, 0.8, -0.2, -0.8, -0.8],
+            [0.8, 2, 0.8, -0.2, -0.8],
+            [-0.2, 0.8, 2, 0.8, -0.2],
+            [-0.8, -0.2, 0.8, 2, 0.8],
+            [-0.8, -0.8, -0.2, 0.8, 2]])
+
+        np.testing.assert_almost_equal(integer_ts.sample_covariance_matrix(1), cov_mat_1)
+        np.testing.assert_almost_equal(integer_ts.sample_covariance_matrix(2), cov_mat_2)
+        np.testing.assert_almost_equal(integer_ts.sample_covariance_matrix(3), cov_mat_3)
+        np.testing.assert_almost_equal(integer_ts.sample_covariance_matrix(4), cov_mat_4)
+        np.testing.assert_almost_equal(integer_ts.sample_covariance_matrix(5), cov_mat_5)
+
+    def test_sample_pacf(self):
+        integers = [1, 2, 3, 4, 5]
+        integer_ts = ARMA(integers)
+
+        self.assertAlmostEqual(integer_ts.sample_pacf(1), 0.4)
+        self.assertAlmostEqual(integer_ts.sample_pacf(2), -13 / 42)
 
     def test_ar_fit_closed_form(self):
         zeros = np.zeros(100)
