@@ -105,7 +105,7 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_ma.get_innovations_error(5), 1.075, 3)
 
     def test_innovation_r(self):
-        model_arma11 = PureARMA([0.2], [0.4], sigma_sq=7)
+        model_arma11 = PureARMA([0.2], [0.4], sigma_sq=5)
         model_ma = PureARMA(theta=[0.5], sigma_sq=3)
         model_arma23 = PureARMA(phi=[1, -0.24], theta=[0.4, 0.2, 0.1], sigma_sq=0.2)
 
@@ -315,16 +315,57 @@ class Test_ARMA(unittest.TestCase):
         ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
         ma = ARMA(ma_data, subtract_mean=False)
 
-        self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 3)
+        self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 2)
 
     def test_likelihood(self):
         ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
         ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
         ma = ARMA(ma_data, subtract_mean=False)
 
-        likelihood = 2 * np.pi
+        model_arma11 = PureARMA([0.2], [0.4], sigma_sq=1)
+        zeros = np.zeros(6)
+        non_zeros = [0, 0, 0, 0, 0, 1]
+        zero_ts = ARMA(zeros)
+        non_zero_ts = ARMA(non_zeros, subtract_mean=False)
 
-        self.assertAlmostEqual(ma.get_likelihood(ma_model), 0.0035943790355147075, 5)
+        likelihood_zeros = (2 * np.pi) ** -3 * (1.375 * 1.0436 * 1.0067 * 1.0011 * 1.0002) ** -0.5
+        likelihood_non_zeros = likelihood_zeros * np.exp(-0.5 * (1 / 1.0002))
+
+        #self.assertAlmostEqual(ma.get_likelihood(ma_model), 0.0035943790355147075, 4)
+        self.assertAlmostEqual(zero_ts.get_likelihood(model_arma11), likelihood_zeros)
+        self.assertAlmostEqual(non_zero_ts.get_likelihood(model_arma11), likelihood_non_zeros, 6)
+
+    def test_loglikelihood(self):
+        model_arma11 = PureARMA([0.2], [0.4], sigma_sq=1)
+        zeros = np.zeros(6)
+        non_zeros = [0, 0, 0, 0, 0, 1]
+        zero_ts = ARMA(zeros)
+        non_zero_ts = ARMA(non_zeros, subtract_mean=False)
+
+        loglikelihood_zeros = np.log((2 * np.pi) ** -3 * (1.375 * 1.0436 * 1.0067 * 1.0011 * 1.0002) ** -0.5)
+        loglikelihood_non_zeros = np.log(np.exp(-0.5 * (1 / 1.0002))) + loglikelihood_zeros
+
+        self.assertAlmostEqual(zero_ts.get_loglikelihood(model_arma11), loglikelihood_zeros, 4)
+        self.assertAlmostEqual(non_zero_ts.get_loglikelihood(model_arma11), loglikelihood_non_zeros, 3)
+
+    def test_FPE(self):
+        short_data = np.zeros(10)
+        long_data = np.ones(100000)
+        low_var_model = PureARMA(phi=[0.3, 0.2], sigma_sq=0.1)
+        high_var_model = PureARMA(phi=[0.1, 0.4, -0.4], sigma_sq=5)
+        noise_model = PureARMA(sigma_sq=2)
+        short_ts = ARMA(short_data)
+        long_ts = ARMA(long_data)
+        short_ts.model = low_var_model
+        long_ts.model = low_var_model
+
+        self.assertAlmostEqual(short_ts.get_fpe(), 0.1 * 12 / 8)
+        self.assertAlmostEqual(short_ts.get_fpe(model=high_var_model), 5 * 13 / 7)
+        self.assertAlmostEqual(short_ts.get_fpe(model=noise_model), 2)
+
+        self.assertAlmostEqual(long_ts.get_fpe(), 0.1 * 100002 / 99998)
+        self.assertAlmostEqual(long_ts.get_fpe(model=high_var_model), 5 * 100003 / 99997)
+        self.assertAlmostEqual(long_ts.get_fpe(model=noise_model), 2)
 
     def test_transform_mean(self):
         data = [-1, 0.5, 0, -0.5, 1]
@@ -413,8 +454,8 @@ class Test_Transform(unittest.TestCase):
         data_sqrt_transf = [-3, -1, 1, (2 ** 0.5 - 1) * 2 - 1, 3]
         empty = np.array([])
 
-        np.testing.assert_almost_equal(transf_mean.backtransform(data_sqrt_transf).tolist(), data_sqrt)
-        np.testing.assert_almost_equal(transf_mean.backtransform(empty).tolist(), [])
+        np.testing.assert_almost_equal(transf_mean.backtransform(data_sqrt_transf), data_sqrt)
+        np.testing.assert_almost_equal(transf_mean.backtransform(empty), empty)
 
 
 if __name__ == '__main__':

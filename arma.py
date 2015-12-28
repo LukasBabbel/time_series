@@ -10,18 +10,20 @@ LIMIT = 50
 #class for handling the ugly side (sample (p)acf, model fitting...)
 class ARMA:
     def __init__(self, data, d=0, subtract_mean=True, box_cox=None):
+        #transform and save data
         self._mean = np.mean(data)
         mean = 0
         if subtract_mean:
             mean = self._mean
-
         self.set_transformation(Transform(d=d, mean=mean, box_cox=box_cox))
-
         self._data = self._transform(data)
 
-        self._sample_auto_covariance = {}
         self.model = None
 
+        #dict for caching
+        self._sample_auto_covariance = {}
+
+        #lists of implemented fitting methods
         self._implemented_ar_methods = ('durbin_levinson', 'closed_form', 'min_reduced_likelihood', 'least_squares')
         self._implemented_ma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
         self._implemented_arma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
@@ -210,6 +212,7 @@ class ARMA:
     def get_one_step_predictor(self, n, model=None):
         return self.get_one_step_predictors(n, model)[n]
 
+    #ToDo refactor using numpy arrays
     def get_one_step_predictors(self, n, model=None):
         if model is None:
             if self.model is None:
@@ -240,12 +243,7 @@ class ARMA:
             else:
                 model = self.model
         predictions = self.get_training_predictions(model=model)
-        rs = np.ones(len(self._data))
-        for j in range(len(self._data)):
-            r = model.get_r(j)
-            if round(r, 7) == 1:
-                break
-            rs[j] = r
+        rs = model.get_first_rs(len(self._data))
         return np.sum((self._data - predictions[:-1]) ** 2 / rs)
 
     def _wsum_residuals_by_param(self, params, p, q):
@@ -261,16 +259,24 @@ class ARMA:
                 raise ValueError('no model specified')
             else:
                 model = self.model
-        rs = np.ones(len(self._data))
-        for j in range(len(self._data)):
-            r = model.get_r(j)
-            if round(r, 7) == 1:
-                break
-            rs[j] = r
-        factor_1 = (2 * np.pi * model.get_sigma_sq()) ** (-len(self._data) / 2)
-        factor_2 = rs.prod() ** (-0.5)
-        factor_3 = np.exp(-0.5 * self.get_weighted_sum_squared_residuals(model=model) / model.get_sigma_sq())
-        return factor_1 * factor_2 * factor_3
+        rs = model.get_first_rs(len(self._data))
+        return np.prod(np.divide(np.exp(self._likelihood_exponent(rs, model)), self._likelihood_dividend(rs, model)))
+
+    def _likelihood_exponent(self, rs, model):
+        predictions = self.get_training_predictions(model=model)
+        return np.divide((self._data - predictions[:-1]) ** 2, (-2 * rs * model.get_sigma_sq()))
+
+    def _likelihood_dividend(self, rs, model):
+        return np.sqrt(rs * (2 * np.pi * model.get_sigma_sq()))
+
+    def get_loglikelihood(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        rs = model.get_first_rs(len(self._data))
+        return np.sum(self._likelihood_exponent(rs, model) - np.log(self._likelihood_dividend(rs, model)))
 
     def get_reduced_likelihood(self, model=None):
         if model is None:
@@ -278,9 +284,7 @@ class ARMA:
                 raise ValueError('no model specified')
             else:
                 model = self.model
-        rs = np.zeros(len(self._data))
-        for i in range(len(self._data)):
-            rs[i] = model.get_r(i)
+        rs = model.get_first_rs(len(self._data))
         return np.log(self.get_weighted_sum_squared_residuals(model=model) / len(self._data)) + np.sum(np.log(rs)) / len(self._data)
 
     def _reduced_likelihood_by_param(self, params, p, q):
@@ -332,9 +336,19 @@ class ARMA:
                 raise ValueError('no model specified')
             else:
                 model = self.model
-        return -2 * np.log(self.get_likelihood(model=model)) +\
+        return -2 * self.get_loglikelihood(model=model) +\
             2 * (model.get_ar_order() + model.get_ma_order() + 1) * len(self._data) /\
             (len(self._data) - model.get_ar_order() - model.get_ma_order() - 2)
+
+    def get_fpe(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        if model.get_ma_order() > 0:
+            raise ValueError('FPE only defined for AR models!')
+        return model.get_sigma_sq() * (len(self._data) + model.get_ar_order()) / (len(self._data) - model.get_ar_order())
 
 
 #class for handling the pure math side, not supposed to see data
@@ -485,6 +499,16 @@ class PureARMA:
 
     def get_r(self, n):
         return self._get_innovations_error_w(n)
+
+    def get_first_rs(self, n):
+        rs = np.ones(n)
+        for j in range(n):
+            r = self.get_r(j)
+            #rs converge to 1, so no point to continue computation
+            if round(r, 20) == 1:
+                break
+            rs[j] = r
+        return rs
 
     def _calculate_innovation_error(self, n):
         return self._kappa_w(n + 1, n + 1) - sum(
