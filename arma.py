@@ -34,6 +34,8 @@ class ARMA:
         self._implemented_arma_methods = ('durbin_levinson',
                                           'min_reduced_likelihood',
                                           'least_squares')
+        self._implemented_prediction_method = ('innovations_algo',
+                                               'kalman')
 
     def set_transformation(self, transformation):
         self._transformation = transformation
@@ -218,22 +220,33 @@ class ARMA:
             theta[j - 1] = theta_j
         return PureARMA(phi, theta, ma_model.get_sigma_sq())
 
-    def get_training_predictions(self, model=None):
-        return self.get_one_step_predictors(len(self._data), model)
+    def get_training_predictions(self, model=None, method='kalman'):
+        return self.get_one_step_predictors(len(self._data), model, method=method)
 
-    def get_one_step_predictor(self, n, model=None):
-        return self.get_one_step_predictors(n, model)[n]
+    def get_one_step_predictor(self, n, model=None, method='kalman'):
+        return self.get_one_step_predictors(n, model, method=method)[n]
 
-    #ToDo refactor using numpy arrays
-    def get_one_step_predictors(self, n, model=None):
+    def get_one_step_predictors(self, n, model=None, method='kalman'):
+        if method not in self._implemented_prediction_method:
+            raise ValueError('unknown method, implemented methods:' +
+                             str(self._implemented_prediction_method))
+        if n > len(self._data):
+            raise ValueError('One step prediction only possible for one step ahead')
+        if n == 0:
+            return np.matrix([[0]])
         if model is None:
             if self.model is None:
                 raise ValueError('no model specified')
             else:
                 model = self.model
+        if method == 'innovations_algo':
+            return self._classic_one_step_prediction(n, model)
+        elif method == 'kalman':
+            return self._kalman_predicitons(n, model)
+
+    #ToDo refactor using numpy arrays
+    def _classic_one_step_prediction(self, n, model):
         m = max(model.get_ar_order(), model.get_ma_order())
-        if n > len(self._data):
-            raise ValueError('One step prediction only possible for one step ahead')
         predictions = np.zeros(max(n, m) + 1)
         for k in range(1, m):
             predictions[k] = sum(
@@ -250,13 +263,25 @@ class ARMA:
             )
         return predictions
 
+    def _kalman_predicitons(self, n, model):
+        r = max(model.get_ar_order(), model.get_ma_order() + 1)
+        state_model = model.get_state_space_repr()
+        predictions = np.zeros(n + 1)
+        last_pred_state = np.matrix(np.zeros([r, 1]))
+        for t in range(1, n + 1):
+            last_pred_state = state_model.get_F() * last_pred_state +\
+                state_model.get_pred_theta(t) * np.linalg.pinv(state_model.get_pred_delta(t)) *\
+                (self._data[t - 1] - predictions[t - 1])
+            predictions[t] = state_model.get_G() * last_pred_state
+        return predictions
+
     def get_weighted_sum_squared_residuals(self, model=None):
         if model is None:
             if self.model is None:
                 raise ValueError('no model specified')
             else:
                 model = self.model
-        predictions = self.get_training_predictions(model=model)
+        predictions = self.get_training_predictions(model=model, method='innovations_algo')
         rs = model.get_first_rs(len(self._data))
         return np.sum((self._data - predictions[:-1]) ** 2 / rs)
 
@@ -278,7 +303,7 @@ class ARMA:
                        self._likelihood_dividend(rs, model)))
 
     def _likelihood_exponent(self, rs, model):
-        predictions = self.get_training_predictions(model=model)
+        predictions = self.get_training_predictions(model=model, method='innovations_algo')
         return np.divide((self._data - predictions[:-1]) ** 2, (-2 * rs * model.get_sigma_sq()))
 
     def _likelihood_dividend(self, rs, model):
@@ -432,8 +457,8 @@ class PureARMA:
             G = self._compute_G()
             Q = self._compute_Q()
             r = max(self.get_ar_order(), self.get_ma_order() + 1)
-            S = np.matrix(np.zeros([r, r]), copy=False)
-            R = np.matrix(np.zeros([r, r]), copy=False)
+            S = np.matrix(np.zeros([r, 1]), copy=False)
+            R = np.matrix(np.zeros([1, 1]), copy=False)
             self._state_space_representation = StateSpaceModel(F, G, Q, R, S)
         return self._state_space_representation
 
@@ -604,8 +629,7 @@ class StateSpaceModel:
         self._R = R
         self._S = S
 
-        #ToDo: check initial values
-        self._pred_psi = {1: R}
+        self._pred_psi = {1: np.zeros(Q.shape)}
         self._pred_pi = {1: Q}
 
     def get_F(self):

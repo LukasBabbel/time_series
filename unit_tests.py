@@ -221,6 +221,28 @@ class Test_StateSpaceModel(unittest.TestCase):
         np.testing.assert_equal(noise_model.get_pred_pi(10), one_matrix)
         np.testing.assert_equal(noise_model.get_error_cov_matrix(10), one_matrix)
 
+    def test_kalman_pred_small(self):
+        zero_matrix = np.matrix(np.zeros([2, 2]))
+        one_matrix = np.matrix([[1]])
+        F = np.matrix([[0, 1], [0, 0]])
+        G = np.matrix([[0, 0.5]])
+        S = np.matrix([[0], [0]])
+        R = np.matrix([[0]])
+        Q = np.matrix([[0, 0], [0, 1]])
+        ma_model = StateSpaceModel(F, G, Q, R, S)
+
+        np.testing.assert_equal(ma_model.get_pred_delta(1), one_matrix / 4)
+        np.testing.assert_equal(ma_model.get_pred_theta(1), np.matrix([[1 / 2], [0]]))
+        np.testing.assert_equal(ma_model.get_pred_psi(1), zero_matrix)
+        np.testing.assert_equal(ma_model.get_pred_pi(1), Q)
+        np.testing.assert_equal(ma_model.get_error_cov_matrix(1), Q)
+
+        np.testing.assert_equal(ma_model.get_pred_delta(2), one_matrix / 4)
+        np.testing.assert_equal(ma_model.get_pred_theta(2), np.matrix([[1 / 2], [0]]))
+        np.testing.assert_equal(ma_model.get_pred_pi(2), np.matrix([[1, 0], [0, 1]]))
+        np.testing.assert_equal(ma_model.get_pred_psi(2), np.matrix([[1, 0], [0, 0]]))
+        np.testing.assert_equal(ma_model.get_error_cov_matrix(2), np.matrix([[0, 0], [0, 1]]))
+
 
 class Test_ARMA(unittest.TestCase):
     def test_sample_autocovariance(self):
@@ -339,22 +361,22 @@ class Test_ARMA(unittest.TestCase):
         ma = ARMA(ma_data, subtract_mean=False)
 
         self.assertEqual(ma.get_one_step_predictor(0, ma_model), 0)
-        self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model), 1.28, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(2, ma_model), -0.22, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(3, ma_model), 0.55, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(4, ma_model), -1.63, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(5, ma_model), -0.22, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model, method='innovations_algo'), 1.28, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(2, ma_model, method='innovations_algo'), -0.22, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(3, ma_model, method='innovations_algo'), 0.55, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(4, ma_model, method='innovations_algo'), -1.63, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(5, ma_model, method='innovations_algo'), -0.22, 2)
 
         arma_data = [-1.1, 0.514, 0.116, -0.845, 0.872, -0.467, -0.977, -1.699, -1.228, -1.093]
         arma_model = PureARMA(phi=[0.2], theta=[0.4], sigma_sq=1)
         arma = ARMA(arma_data, subtract_mean=False)
 
-        self.assertEqual(arma.get_one_step_predictor(0, arma_model), 0)
-        self.assertAlmostEqual(arma.get_one_step_predictor(1, arma_model), -0.534, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(2, arma_model), 0.5068, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(3, arma_model), -0.1321, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(4, arma_model), -0.4539, 1)
-        self.assertAlmostEqual(arma.get_one_step_predictor(5, arma_model), 0.7046, 1)
+        self.assertEqual(arma.get_one_step_predictor(0, arma_model, method='innovations_algo'), 0)
+        self.assertAlmostEqual(arma.get_one_step_predictor(1, arma_model, method='innovations_algo'), -0.534, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(2, arma_model, method='innovations_algo'), 0.5068, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(3, arma_model, method='innovations_algo'), -0.1321, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(4, arma_model, method='innovations_algo'), -0.4539, 1)
+        self.assertAlmostEqual(arma.get_one_step_predictor(5, arma_model, method='innovations_algo'), 0.7046, 1)
 
         data = [1, 2, 3, 4, 5]
         empty_model = PureARMA()
@@ -362,7 +384,25 @@ class Test_ARMA(unittest.TestCase):
         empty.model = empty_model
 
         for k in range(6):
-            self.assertEqual(empty.get_one_step_predictor(k), 0)
+            self.assertEqual(empty.get_one_step_predictor(k, method='innovations_algo'), 0)
+
+    def test_one_step_kalman(self):
+        ma_model = PureARMA(theta=[0.5], sigma_sq=2)
+        ma_data = [1, 1.5, 0.5, -2]
+        ma = ARMA(ma_data, subtract_mean=False)
+
+        zeros = np.zeros(20)
+        arma_model = PureARMA(phi=[0.2, -0.6, 0.3], theta=[0.3, -0.4], sigma_sq=0.25)
+        arma = ARMA(zeros)
+
+        for k in range(21):
+            self.assertEqual(arma.get_one_step_predictor(k, arma_model, method='kalman'), 0)
+
+        self.assertAlmostEqual(ma.get_one_step_predictor(0, ma_model, method='kalman'), 0)
+        self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model, method='kalman'), 0.5, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(2, ma_model, method='kalman'), 0.5, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(3, ma_model, method='kalman'), 0, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(4, ma_model, method='kalman'), -1, 2)
 
     def test_weighted_sum_squared_residuals(self):
         data = [-2, 0, 2]
