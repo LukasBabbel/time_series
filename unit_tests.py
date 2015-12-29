@@ -155,6 +155,54 @@ class Test_PureARMA(unittest.TestCase):
         self.assertAlmostEqual(model_arma23._kappa_w(1, 5), 0, 5)
         self.assertAlmostEqual(model_arma23._kappa_w(2, 2), 7.17133, 5)
 
+    def test_Q(self):
+        ar_model = PureARMA(phi=[1, 2, 3], sigma_sq=2)
+        ma_model = PureARMA(theta=[1, 2, 3], sigma_sq=3)
+        arma_model = PureARMA(phi=[1, 2, 3], theta=[1, 2, 3], sigma_sq=4)
+        noise_model = PureARMA(sigma_sq=5)
+
+        ar_Q = np.matrix([[0, 0, 0], [0, 0, 0], [0, 0, 2]])
+        ma_Q = np.matrix([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 3]])
+        arma_Q = np.matrix([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 4]])
+        noise_Q = np.matrix([[5]])
+
+        np.testing.assert_equal(ar_model.get_Q(), ar_Q)
+        np.testing.assert_equal(ma_model.get_Q(), ma_Q)
+        np.testing.assert_equal(arma_model.get_Q(), arma_Q)
+        np.testing.assert_equal(noise_model.get_Q(), noise_Q)
+
+    def test_G(self):
+        ar_model = PureARMA(phi=[1, 2, 3], sigma_sq=2)
+        ma_model = PureARMA(theta=[1, 2, 3], sigma_sq=3)
+        arma_model = PureARMA(phi=[1, 2, 3, 4, 5], theta=[1, 2, 3], sigma_sq=4)
+        noise_model = PureARMA(sigma_sq=5)
+
+        ar_G = np.matrix([[0, 0, 1]])
+        ma_G = np.matrix([[3, 2, 1, 1]])
+        arma_G = np.matrix([[0, 3, 2, 1, 1]])
+        noise_G = np.matrix([[1]])
+
+        np.testing.assert_equal(ar_model.get_G(), ar_G)
+        np.testing.assert_equal(ma_model.get_G(), ma_G)
+        np.testing.assert_equal(arma_model.get_G(), arma_G)
+        np.testing.assert_equal(noise_model.get_G(), noise_G)
+
+    def test_F(self):
+        ar_model = PureARMA(phi=[1, 2, 3], sigma_sq=2)
+        ma_model = PureARMA(theta=[1, 2, 3], sigma_sq=3)
+        arma_model = PureARMA(phi=[1, 2, 3], theta=[1, 2, 3], sigma_sq=4)
+        noise_model = PureARMA(sigma_sq=5)
+
+        ar_F = np.matrix([[0, 1, 0], [0, 0, 1], [3, 2, 1]])
+        ma_F = np.matrix([[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [0, 0, 0, 0]])
+        arma_F = np.matrix([[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [0, 3, 2, 1]])
+        noise_F = np.matrix([[0]])
+
+        np.testing.assert_equal(ar_model.get_F(), ar_F)
+        np.testing.assert_equal(ma_model.get_F(), ma_F)
+        np.testing.assert_equal(arma_model.get_F(), arma_F)
+        np.testing.assert_equal(noise_model.get_F(), noise_F)
+
 
 class Test_ARMA(unittest.TestCase):
     def test_sample_autocovariance(self):

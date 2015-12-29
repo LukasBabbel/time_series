@@ -24,9 +24,16 @@ class ARMA:
         self._sample_auto_covariance = {}
 
         #lists of implemented fitting methods
-        self._implemented_ar_methods = ('durbin_levinson', 'closed_form', 'min_reduced_likelihood', 'least_squares')
-        self._implemented_ma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
-        self._implemented_arma_methods = ('durbin_levinson', 'min_reduced_likelihood', 'least_squares')
+        self._implemented_ar_methods = ('durbin_levinson',
+                                        'closed_form',
+                                        'min_reduced_likelihood',
+                                        'least_squares')
+        self._implemented_ma_methods = ('durbin_levinson',
+                                        'min_reduced_likelihood',
+                                        'least_squares')
+        self._implemented_arma_methods = ('durbin_levinson',
+                                          'min_reduced_likelihood',
+                                          'least_squares')
 
     def set_transformation(self, transformation):
         self._transformation = transformation
@@ -94,7 +101,8 @@ class ARMA:
 
     def fit_ar(self, p, method='durbin_levinson'):
         if method not in self._implemented_ar_methods:
-            raise ValueError('unknown method, implemented methods:' + str(self._implemented_ar_methods))
+            raise ValueError('unknown method, implemented methods:' +
+                             str(self._implemented_ar_methods))
 
         if p == 0:
             self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
@@ -139,7 +147,8 @@ class ARMA:
 
     def fit_ma(self, q, method='durbin_levinson'):
         if method not in self._implemented_ma_methods:
-            raise ValueError('unknown method, implemented methods:' + str(self._implemented_ma_methods))
+            raise ValueError('unknown method, implemented methods:' +
+                             str(self._implemented_ma_methods))
 
         if q == 0:
             self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
@@ -160,7 +169,8 @@ class ARMA:
                     self.sample_autocovariance(m - k + 1) -
                     sum(theta[m][m - j] * theta[k - 1][k - j - 1] * nu[j] for j in range(k))
                 ) / nu[k]
-            nu[m + 1] = self.sample_autocovariance(0) - sum(theta[m][m - j] ** 2 * nu[j] for j in range(m + 1))
+            nu[m + 1] = self.sample_autocovariance(0) -\
+                sum(theta[m][m - j] ** 2 * nu[j] for j in range(m + 1))
         return PureARMA(theta=theta[q - 1], sigma_sq=nu[q])
 
     #ToDo write tests
@@ -172,7 +182,8 @@ class ARMA:
 
     def fit_arma(self, p, q, method='durbin_levinson', **kwargs):
         if method not in self._implemented_arma_methods:
-            raise ValueError('unknown method, implemented methods:' + str(self._implemented_arma_methods))
+            raise ValueError('unknown method, implemented methods:' +
+                             str(self._implemented_arma_methods))
 
         if q == 0 and p == 0:
             self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
@@ -191,7 +202,8 @@ class ARMA:
     def _fit_arma_durbin_levinson(self, p, q, m=0):
         m = max(m, p + q)
         ma_model = self._fit_ma_durbin_levinson(m)
-        estimation_matrix = np.matrix([[ma_model.get_theta(q + j - i) for i in range(p)] for j in range(p)])
+        estimation_matrix = np.matrix([[ma_model.get_theta(q + j - i)
+                                        for i in range(p)] for j in range(p)])
         estimation_matrix = np.linalg.inv(estimation_matrix)
         phi = estimation_matrix * np.matrix([ma_model.get_theta(q + i + 1) for i in range(p)]).T
         phi = np.array(phi).flatten()
@@ -225,14 +237,16 @@ class ARMA:
         predictions = np.zeros(max(n, m) + 1)
         for k in range(1, m):
             predictions[k] = sum(
-                model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, k + 1)
+                model.get_innovation_coef(k, j) * (self._data[k - j] - predictions[k - j])
+                for j in range(1, k + 1)
             )
         for k in range(m, n + 1):
             k_limited = min(LIMIT + m, k)
             predictions[k] = sum(
                 model.get_phi(j) * self._data[k - j] for j in range(1, model.get_ar_order() + 1)
             ) + sum(
-                model.get_innovation_coef(k_limited, j) * (self._data[k - j] - predictions[k - j]) for j in range(1, model.get_ma_order() + 1)
+                model.get_innovation_coef(k_limited, j) * (self._data[k - j] - predictions[k - j])
+                for j in range(1, model.get_ma_order() + 1)
             )
         return predictions
 
@@ -260,7 +274,8 @@ class ARMA:
             else:
                 model = self.model
         rs = model.get_first_rs(len(self._data))
-        return np.prod(np.divide(np.exp(self._likelihood_exponent(rs, model)), self._likelihood_dividend(rs, model)))
+        return np.prod(np.divide(np.exp(self._likelihood_exponent(rs, model)),
+                       self._likelihood_dividend(rs, model)))
 
     def _likelihood_exponent(self, rs, model):
         predictions = self.get_training_predictions(model=model)
@@ -276,7 +291,8 @@ class ARMA:
             else:
                 model = self.model
         rs = model.get_first_rs(len(self._data))
-        return np.sum(self._likelihood_exponent(rs, model) - np.log(self._likelihood_dividend(rs, model)))
+        return np.sum(self._likelihood_exponent(rs, model) -
+                      np.log(self._likelihood_dividend(rs, model)))
 
     def get_reduced_likelihood(self, model=None):
         if model is None:
@@ -285,7 +301,8 @@ class ARMA:
             else:
                 model = self.model
         rs = model.get_first_rs(len(self._data))
-        return np.log(self.get_weighted_sum_squared_residuals(model=model) / len(self._data)) + np.sum(np.log(rs)) / len(self._data)
+        return np.log(self.get_weighted_sum_squared_residuals(model=model) / len(self._data)) +\
+            np.sum(np.log(rs)) / len(self._data)
 
     def _reduced_likelihood_by_param(self, params, p, q):
         phi = params[:p]
@@ -348,7 +365,9 @@ class ARMA:
                 model = self.model
         if model.get_ma_order() > 0:
             raise ValueError('FPE only defined for AR models!')
-        return model.get_sigma_sq() * (len(self._data) + model.get_ar_order()) / (len(self._data) - model.get_ar_order())
+        return model.get_sigma_sq() *\
+            (len(self._data) + model.get_ar_order()) /\
+            (len(self._data) - model.get_ar_order())
 
 
 #class for handling the pure math side, not supposed to see data
@@ -365,6 +384,12 @@ class PureARMA:
         self._p = len(phi)
         self._q = len(theta)
         self._m = max(self._p, self._q)
+
+        #matrices for state space representation
+        self._Q = None
+        self._G = None
+        self._F = None
+        self._G = None
 
         #dicts for caching
         self._ma_infty_coefs = {}
@@ -405,8 +430,47 @@ class PureARMA:
             return self._theta[k - 1]
         return 0
 
+    def get_Q(self):
+        if self._Q is None:
+            self._Q = self._compute_Q()
+        return self._Q
+
+    def _compute_Q(self):
+        r = max(self.get_ar_order(), self.get_ma_order() + 1)
+        Q = np.matrix(np.zeros([r, r]), copy=False)
+        Q[r - 1, r - 1] = self.get_sigma_sq()
+        return Q
+
+    def get_G(self):
+        if self._G is None:
+            self._G = self._compute_G()
+        return self._G
+
+    def _compute_G(self):
+        r = max(self.get_ar_order(), self.get_ma_order() + 1)
+        G = np.matrix(np.zeros([1, r]), copy=False)
+        for k in range(r):
+            G[0, r - 1 - k] = self.get_theta(k)
+        return G
+
+    def get_F(self):
+        if self._F is None:
+            self._F = self._compute_F()
+        return self._F
+
+    def _compute_F(self):
+        r = max(self.get_ar_order(), self.get_ma_order() + 1)
+        F = np.matrix(np.zeros([r, r]), copy=False)
+        for k in range(1, r):
+            F[k - 1, k] = 1
+        for k in range(1, r + 1):
+            F[r - 1, r - k] = self.get_phi(k)
+        return F
+
     def summary(self):
-        print('ARMA({}, {}) with Z_t ~ N(0, {})'.format(self.get_ar_order(), self.get_ma_order(), round(self.get_sigma_sq(), 2)))
+        print('ARMA({}, {}) with Z_t ~ N(0, {})'.format(self.get_ar_order(),
+              self.get_ma_order(),
+              round(self.get_sigma_sq(), 2)))
         if self.get_ar_order() > 0:
             print('AR coefficients:')
         for k in range(1, self.get_ar_order() + 1):
@@ -426,7 +490,8 @@ class PureARMA:
     #Brockwell, Davis p. 91
     def _calculate_ma_infty_coef(self, j):
         if j < max(self._p, self._q + 1):
-            return self.get_theta(j) + sum(self.get_phi(k) * self.get_ma_infty_coef(j - k) for k in range(1, j + 1))
+            return self.get_theta(j) + sum(self.get_phi(k) * self.get_ma_infty_coef(j - k)
+                                           for k in range(1, j + 1))
         return sum(self.get_phi(k) * self.get_ma_infty_coef(j - k) for k in range(1, self._p + 1))
 
     def plot_impulse_response(self, maxlag=20):
@@ -443,7 +508,8 @@ class PureARMA:
             return acovf
         if lag <= self._p:
             rhs = self._sigma_sq * np.array([
-                sum(self.get_theta(j) * self.get_ma_infty_coef(j - k) for j in range(k, self._q + 1)) for k in range(self._p + 1)
+                sum(self.get_theta(j) * self.get_ma_infty_coef(j - k)
+                    for j in range(k, self._q + 1)) for k in range(self._p + 1)
             ])
             lhs = np.zeros((self._p + 1, self._p + 1))
             for t in range(self._p + 1):
@@ -465,7 +531,8 @@ class PureARMA:
     def _auto_cov_funct_ma(self, lag):
         if lag > self.get_ma_order():
             return 0
-        return self._sigma_sq * sum(self.get_theta(j) * self.get_theta(j + lag) for j in range(self._q + 1))
+        return self._sigma_sq * sum(self.get_theta(j) * self.get_theta(j + lag)
+                                    for j in range(self._q + 1))
 
     #Brockwell, Davis p. 172
     def get_innovation_coef(self, n, j):
@@ -524,10 +591,12 @@ class PureARMA:
         if min(i, j) <= self._m and self._m < max(i, j) and max(i, j) <= 2 * self._m:
             return (
                 self.auto_cov_funct(i - j) -
-                sum(self.get_phi(r) * self.auto_cov_funct(r - abs(i - j)) for r in range(1, self._p + 1))
+                sum(self.get_phi(r) * self.auto_cov_funct(r - abs(i - j))
+                    for r in range(1, self._p + 1))
             ) / self._sigma_sq
         if min(i, j) > self._m:
-            return sum(self.get_theta(r) * self.get_theta(r + abs(i - j)) for r in range(self._q + 1))
+            return sum(self.get_theta(r) * self.get_theta(r + abs(i - j))
+                       for r in range(self._q + 1))
         return 0
 
 
