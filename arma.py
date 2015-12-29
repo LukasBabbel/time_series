@@ -385,11 +385,7 @@ class PureARMA:
         self._q = len(theta)
         self._m = max(self._p, self._q)
 
-        #matrices for state space representation
-        self._Q = None
-        self._G = None
-        self._F = None
-        self._G = None
+        self._state_space_representation = None
 
         #dicts for caching
         self._ma_infty_coefs = {}
@@ -430,10 +426,16 @@ class PureARMA:
             return self._theta[k - 1]
         return 0
 
-    def get_Q(self):
-        if self._Q is None:
-            self._Q = self._compute_Q()
-        return self._Q
+    def get_state_space_repr(self):
+        if self._state_space_representation is None:
+            F = self._compute_F()
+            G = self._compute_G()
+            Q = self._compute_Q()
+            r = max(self.get_ar_order(), self.get_ma_order() + 1)
+            S = np.matrix(np.zeros([r, r]), copy=False)
+            R = np.matrix(np.zeros([r, r]), copy=False)
+            self._state_space_representation = StateSpaceModel(F, G, Q, R, S)
+        return self._state_space_representation
 
     def _compute_Q(self):
         r = max(self.get_ar_order(), self.get_ma_order() + 1)
@@ -441,22 +443,12 @@ class PureARMA:
         Q[r - 1, r - 1] = self.get_sigma_sq()
         return Q
 
-    def get_G(self):
-        if self._G is None:
-            self._G = self._compute_G()
-        return self._G
-
     def _compute_G(self):
         r = max(self.get_ar_order(), self.get_ma_order() + 1)
         G = np.matrix(np.zeros([1, r]), copy=False)
         for k in range(r):
             G[0, r - 1 - k] = self.get_theta(k)
         return G
-
-    def get_F(self):
-        if self._F is None:
-            self._F = self._compute_F()
-        return self._F
 
     def _compute_F(self):
         r = max(self.get_ar_order(), self.get_ma_order() + 1)
@@ -598,6 +590,62 @@ class PureARMA:
             return sum(self.get_theta(r) * self.get_theta(r + abs(i - j))
                        for r in range(self._q + 1))
         return 0
+
+
+class StateSpaceModel:
+    def __init__(self, F, G, Q, R, S):
+        #time invariant state space model (see Brockwell, Davis ch. 12):
+        #Y_t = FX_t + W_t
+        #X_t+1 = GX_t + V_t
+        #covariance matrix of [W_t, V_t]' = [[Q, S'], [S, R]]
+        self._F = F
+        self._G = G
+        self._Q = Q
+        self._R = R
+        self._S = S
+
+        #ToDo: check initial values
+        self._pred_psi = {1: R}
+        self._pred_pi = {1: Q}
+
+    def get_F(self):
+        return self._F
+
+    def get_G(self):
+        return self._G
+
+    def get_Q(self):
+        return self._Q
+
+    def get_R(self):
+        return self._R
+
+    def get_S(self):
+        return self._S
+
+    def get_error_cov_matrix(self, t):
+        if t < 1:
+            raise ValueError('Prediction error only defined for positive index')
+        return self.get_pred_pi(t) - self.get_pred_psi(t)
+
+    def get_pred_psi(self, t):
+        if t not in self._pred_psi:
+            self._pred_psi[t] = self._F * self.get_pred_psi(t - 1) * self._F.T +\
+                self.get_pred_theta(t - 1) *\
+                np.linalg.pinv(self.get_pred_delta(t - 1)) *\
+                self.get_pred_theta(t - 1).T
+        return self._pred_psi[t]
+
+    def get_pred_pi(self, t):
+        if t not in self._pred_pi:
+            self._pred_pi[t] = self._F * self.get_pred_pi(t - 1) * self._F.T + self._Q
+        return self._pred_pi[t]
+
+    def get_pred_delta(self, t):
+        return self._G * self.get_error_cov_matrix(t) * self._G.T + self._R
+
+    def get_pred_theta(self, t):
+        return self._F * self.get_error_cov_matrix(t) * self._G.T + self._S
 
 
 #class for transformations and backtransformations
