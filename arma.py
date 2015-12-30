@@ -25,17 +25,22 @@ class ARMA:
 
         #lists of implemented fitting methods
         self._implemented_ar_methods = ('durbin_levinson',
-                                        'closed_form',
+                                        'yule_walker',
                                         'min_reduced_likelihood',
-                                        'least_squares')
+                                        'least_squares',
+                                        'kalman')
         self._implemented_ma_methods = ('durbin_levinson',
                                         'min_reduced_likelihood',
-                                        'least_squares')
+                                        'least_squares',
+                                        'kalman')
         self._implemented_arma_methods = ('durbin_levinson',
                                           'min_reduced_likelihood',
-                                          'least_squares')
+                                          'least_squares',
+                                          'kalman')
         self._implemented_prediction_method = ('innovations_algo',
                                                'kalman')
+        self._implemented_likelihood_methods = ('innovations_algo',
+                                                'kalman')
 
     def set_transformation(self, transformation):
         self._transformation = transformation
@@ -110,14 +115,16 @@ class ARMA:
             self.model = PureARMA(sigma_sq=self.sample_autocovariance(0))
         elif method == 'durbin_levinson':
             self.model = self._fit_ar_durbin_levinson(p)
-        elif method == 'closed_form':
-            self.model = self._fit_ar_closed_form(p)
+        elif method == 'yule_walker':
+            self.model = self._fit_ar_yule_walker(p)
         elif method == 'min_reduced_likelihood':
             self.model = self._fit_arma_max_likelihood(p=p)
         elif method == 'least_squares':
             self.model = self._fit_arma_least_squares(p=p)
+        elif method == 'kalman':
+            self.model = self._fit_arma_max_likelihood_kalman(p=p)
 
-    def _fit_ar_closed_form(self, p):
+    def _fit_ar_yule_walker(self, p):
         Gamma = self.sample_covariance_matrix(p)
         gamma = np.matrix([self.sample_autocovariance(l) for l in range(1, p + 1)]).T
         coefs = (np.linalg.inv(Gamma) * gamma).getA1()
@@ -160,6 +167,8 @@ class ARMA:
             self.model = self._fit_arma_max_likelihood(q=q)
         elif method == 'least_squares':
             self.model = self._fit_arma_least_squares(q=q)
+        elif method == 'kalman':
+            self.model = self._fit_arma_max_likelihood_kalman(q=q)
 
     def _fit_ma_durbin_levinson(self, q):
         nu = np.zeros(q + 1)
@@ -199,6 +208,8 @@ class ARMA:
             self.model = self._fit_arma_max_likelihood(p=p, q=q)
         elif method == 'least_squares':
             self.model = self._fit_arma_least_squares(p=p, q=q)
+        elif method == 'kalman':
+            self.model = self._fit_arma_max_likelihood_kalman(p=p, q=q)
 
     #ToDo test this
     def _fit_arma_durbin_levinson(self, p, q, m=0):
@@ -292,15 +303,33 @@ class ARMA:
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_weighted_sum_squared_residuals(model=model)
 
-    def get_likelihood(self, model=None):
+    def get_likelihood(self, model=None, method='innovations_algo'):
         if model is None:
             if self.model is None:
                 raise ValueError('no model specified')
             else:
                 model = self.model
+        if method not in self._implemented_likelihood_methods:
+            raise ValueError('unknown method, implemented methods:' +
+                             str(self._implemented_likelihood_methods))
+        if method == 'innovations_algo':
+            return self._likelihood_innovations(model)
+        elif method == 'kalman':
+            return self._likelihood_kalman(model)
+
+    def _likelihood_innovations(self, model):
         rs = model.get_first_rs(len(self._data))
         return np.prod(np.divide(np.exp(self._likelihood_exponent(rs, model)),
                        self._likelihood_dividend(rs, model)))
+
+    def _likelihood_kalman(self, model):
+        predictions = (self.get_training_predictions(model=model, method='kalman'))[:-1]
+        residuals = predictions - self._data
+        errors = np.zeros(len(self._data))
+        for t in range(len(self._data)):
+            errors[t] = model.get_state_space_repr().get_pred_delta(t + 1)
+        normalizing_dividend = np.sqrt(2 * np.pi) * np.sqrt(errors)
+        return np.prod(np.exp(-0.5 * residuals ** 2 / errors) / normalizing_dividend)
 
     def _likelihood_exponent(self, rs, model):
         predictions = self.get_training_predictions(model=model, method='innovations_algo')
@@ -336,9 +365,29 @@ class ARMA:
         model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
         return self.get_reduced_likelihood(model=model)
 
+    def _kalman_likelihood_by_param(self, params, p, q):
+        phi = params[:p]
+        theta = params[p:p + q]
+        sigma_sq = params[-1]
+        model = PureARMA(phi=phi, theta=theta, sigma_sq=sigma_sq)
+        return self.get_likelihood(model=model, method='kalman')
+
+    #ToDo testing and error handling if minimizations fails
+    def _fit_arma_max_likelihood_kalman(self, p=0, q=0):
+        start_params = self._calculate_initial_coeffs(p, q)
+
+        def to_minimize(params):
+                    return self._kalman_likelihood_by_param(params, p, q)
+        opt_params = scipy.optimize.minimize(to_minimize, x0=start_params)['x']
+
+        opt_phi = opt_params[:p]
+        opt_theta = opt_params[p:p + q]
+        opt_sigma_sq = opt_params[-1]
+        return PureARMA(opt_phi, opt_theta, opt_sigma_sq)
+
     #ToDo testing and error handling if minimizations fails
     def _fit_arma_max_likelihood(self, p=0, q=0):
-        start_params = self._calculate_initial_coeffs(p, q)
+        start_params = self._calculate_initial_coeffs(p, q)[:-1]
 
         def to_minimize(params):
                     return self._reduced_likelihood_by_param(params, p, q)
@@ -351,7 +400,7 @@ class ARMA:
 
     #ToDo testing and error handling if minimizations fails
     def _fit_arma_least_squares(self, p=0, q=0):
-        start_params = self._calculate_initial_coeffs(p, q)
+        start_params = self._calculate_initial_coeffs(p, q)[:-1]
 
         def to_minimize(params):
                     return self._wsum_residuals_by_param(params, p, q)
@@ -369,7 +418,7 @@ class ARMA:
             start_model = self._fit_ar_durbin_levinson(p)
         else:
             start_model = self._fit_arma_durbin_levinson(p, q)
-        return np.hstack(start_model.get_params())[:-1]
+        return np.hstack(start_model.get_params())
 
     #ToDo test
     def get_aicc(self, model=None):

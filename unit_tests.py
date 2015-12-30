@@ -203,6 +203,21 @@ class Test_PureARMA(unittest.TestCase):
         np.testing.assert_equal(arma_model.get_F(), arma_F)
         np.testing.assert_equal(noise_model.get_F(), noise_F)
 
+    def test_state_space_repr(self):
+        F = np.matrix([[0, 1], [0, 0]])
+        G = np.matrix([[0.5, 1]])
+        S = np.matrix([[0], [0]])
+        R = np.matrix([[0]])
+        Q = np.matrix([[0, 0], [0, 1]])
+        ma_model = PureARMA(theta=[0.5])
+        ma_statespace = ma_model.get_state_space_repr()
+
+        np.testing.assert_equal(ma_statespace.get_F(), F)
+        np.testing.assert_equal(ma_statespace.get_G(), G)
+        np.testing.assert_equal(ma_statespace.get_S(), S)
+        np.testing.assert_equal(ma_statespace.get_R(), R)
+        np.testing.assert_equal(ma_statespace.get_Q(), Q)
+
 
 class Test_StateSpaceModel(unittest.TestCase):
     def test_kalman_pred_mini(self):
@@ -239,6 +254,28 @@ class Test_StateSpaceModel(unittest.TestCase):
 
         np.testing.assert_equal(ma_model.get_pred_delta(2), one_matrix / 4)
         np.testing.assert_equal(ma_model.get_pred_theta(2), np.matrix([[1 / 2], [0]]))
+        np.testing.assert_equal(ma_model.get_pred_pi(2), np.matrix([[1, 0], [0, 1]]))
+        np.testing.assert_equal(ma_model.get_pred_psi(2), np.matrix([[1, 0], [0, 0]]))
+        np.testing.assert_equal(ma_model.get_error_cov_matrix(2), np.matrix([[0, 0], [0, 1]]))
+
+    def test_kalman_pred_ma(self):
+        zero_matrix = np.matrix(np.zeros([2, 2]))
+        one_matrix = np.matrix([[1]])
+        F = np.matrix([[0, 1], [0, 0]])
+        G = np.matrix([[0.5, 1]])
+        S = np.matrix([[0], [0]])
+        R = np.matrix([[0]])
+        Q = np.matrix([[0, 0], [0, 1]])
+        ma_model = StateSpaceModel(F, G, Q, R, S)
+
+        np.testing.assert_equal(ma_model.get_pred_delta(1), one_matrix)
+        np.testing.assert_equal(ma_model.get_pred_theta(1), np.matrix([[1], [0]]))
+        np.testing.assert_equal(ma_model.get_pred_psi(1), zero_matrix)
+        np.testing.assert_equal(ma_model.get_pred_pi(1), Q)
+        np.testing.assert_equal(ma_model.get_error_cov_matrix(1), Q)
+
+        np.testing.assert_equal(ma_model.get_pred_delta(2), one_matrix)
+        np.testing.assert_equal(ma_model.get_pred_theta(2), np.matrix([[1], [0]]))
         np.testing.assert_equal(ma_model.get_pred_pi(2), np.matrix([[1, 0], [0, 1]]))
         np.testing.assert_equal(ma_model.get_pred_psi(2), np.matrix([[1, 0], [0, 0]]))
         np.testing.assert_equal(ma_model.get_error_cov_matrix(2), np.matrix([[0, 0], [0, 1]]))
@@ -319,7 +356,7 @@ class Test_ARMA(unittest.TestCase):
         self.assertAlmostEqual(integer_ts.sample_pacf(1), 0.4)
         self.assertAlmostEqual(integer_ts.sample_pacf(2), -13 / 42)
 
-    def test_ar_fit_closed_form(self):
+    def test_ar_fit_yule_walker(self):
         zeros = np.zeros(100)
         zero_ts = ARMA(zeros)
 
@@ -327,10 +364,10 @@ class Test_ARMA(unittest.TestCase):
         simulated_ar3 = simulate_arma(phi=[0.5, 0.1, 0.2], sigma=0.5)
         ar3 = ARMA(simulated_ar3)
 
-        zero_ts.fit_ar(p=0, method='closed_form')
+        zero_ts.fit_ar(p=0, method='yule_walker')
         self.assertEqual(len(zero_ts.model.get_params()[0]), 0)
 
-        ar3.fit_ar(p=3, method='closed_form')
+        ar3.fit_ar(p=3, method='yule_walker')
         self.assertAlmostEqual(ar3.model.get_params()[0][0], 0.5, 1)
         self.assertAlmostEqual(ar3.model.get_params()[0][1], 0.1, 1)
         self.assertAlmostEqual(ar3.model.get_params()[0][2], 0.2, 1)
@@ -395,14 +432,23 @@ class Test_ARMA(unittest.TestCase):
         arma_model = PureARMA(phi=[0.2, -0.6, 0.3], theta=[0.3, -0.4], sigma_sq=0.25)
         arma = ARMA(zeros)
 
+        ar_data = [1, 2, 4]
+        ar_model = PureARMA(phi=[0.5, -0.5], sigma_sq=2)
+        ar = ARMA(ar_data, subtract_mean=False)
+
         for k in range(21):
             self.assertEqual(arma.get_one_step_predictor(k, arma_model, method='kalman'), 0)
 
         self.assertAlmostEqual(ma.get_one_step_predictor(0, ma_model, method='kalman'), 0)
-        self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model, method='kalman'), 0.5, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(2, ma_model, method='kalman'), 0.5, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(3, ma_model, method='kalman'), 0, 2)
-        self.assertAlmostEqual(ma.get_one_step_predictor(4, ma_model, method='kalman'), -1, 2)
+        self.assertAlmostEqual(ma.get_one_step_predictor(1, ma_model, method='kalman'), 0.5)
+        self.assertAlmostEqual(ma.get_one_step_predictor(2, ma_model, method='kalman'), 0.5)
+        self.assertAlmostEqual(ma.get_one_step_predictor(3, ma_model, method='kalman'), 0)
+        self.assertAlmostEqual(ma.get_one_step_predictor(4, ma_model, method='kalman'), -1)
+
+        self.assertAlmostEqual(ar.get_one_step_predictor(0, ar_model, method='kalman'), 0)
+        self.assertAlmostEqual(ar.get_one_step_predictor(1, ar_model, method='kalman'), 0.5)
+        self.assertAlmostEqual(ar.get_one_step_predictor(2, ar_model, method='kalman'), 0.5)
+        self.assertAlmostEqual(ar.get_one_step_predictor(3, ar_model, method='kalman'), 1)
 
     def test_weighted_sum_squared_residuals(self):
         data = [-2, 0, 2]
@@ -423,7 +469,7 @@ class Test_ARMA(unittest.TestCase):
 
         self.assertAlmostEqual(ma.get_reduced_likelihood(ma_model), 0.7387, 2)
 
-    def test_likelihood(self):
+    def test_likelihood_inno(self):
         ma_model = PureARMA(theta=[-0.9], sigma_sq=1)
         ma_data = [-2.58, 1.62, -0.96, 2.62, -1.36]
         ma = ARMA(ma_data, subtract_mean=False)
@@ -438,8 +484,17 @@ class Test_ARMA(unittest.TestCase):
         likelihood_non_zeros = likelihood_zeros * np.exp(-0.5 * (1 / 1.0002))
 
         #self.assertAlmostEqual(ma.get_likelihood(ma_model), 0.0035943790355147075, 4)
-        self.assertAlmostEqual(zero_ts.get_likelihood(model_arma11), likelihood_zeros)
-        self.assertAlmostEqual(non_zero_ts.get_likelihood(model_arma11), likelihood_non_zeros, 6)
+        self.assertAlmostEqual(zero_ts.get_likelihood(model_arma11, method='innovations_algo'), likelihood_zeros)
+        self.assertAlmostEqual(non_zero_ts.get_likelihood(model_arma11, method='innovations_algo'), likelihood_non_zeros, 6)
+
+    def test_likelihood_kalman(self):
+        ma_model = PureARMA(theta=[0.5])
+        ma_data = [0, 1]
+        ma_ts = ARMA(ma_data, subtract_mean=False)
+
+        likelihood = (2 * np.pi) ** -1 * np.exp(-0.5)
+
+        self.assertAlmostEqual(ma_ts.get_likelihood(model=ma_model, method='kalman'), likelihood)
 
     def test_loglikelihood(self):
         model_arma11 = PureARMA([0.2], [0.4], sigma_sq=1)
@@ -513,6 +568,12 @@ class Test_ARMA(unittest.TestCase):
         self.assertListEqual(mean_zero._backtransform(mean_zero._transform(empty)).tolist(), empty)
         self.assertListEqual(pos_mean._backtransform(pos_mean._transform(empty)).tolist(), empty)
         self.assertListEqual(neg_fraction_mean._backtransform(neg_fraction_mean._transform(empty)).tolist(), empty)
+
+    def test_no_fitting_exceptions(self):
+        simulated_arma = simulate_arma(phi=[0.2, 0.5], theta=[0.2], simulations=10)
+        arma = ARMA(simulated_arma)
+        for method in arma._implemented_arma_methods:
+            arma.fit_arma(p=2, q=1, method=method)
 
 
 class Test_Transform(unittest.TestCase):
