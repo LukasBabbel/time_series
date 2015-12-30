@@ -377,7 +377,7 @@ class ARMA:
         start_params = self._calculate_initial_coeffs(p, q)
 
         def to_minimize(params):
-                    return self._kalman_likelihood_by_param(params, p, q)
+                    return -self._kalman_likelihood_by_param(params, p, q)
         opt_params = scipy.optimize.minimize(to_minimize, x0=start_params)['x']
 
         opt_phi = opt_params[:p]
