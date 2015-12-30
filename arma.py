@@ -338,15 +338,33 @@ class ARMA:
     def _likelihood_dividend(self, rs, model):
         return np.sqrt(rs * (2 * np.pi * model.get_sigma_sq()))
 
-    def get_loglikelihood(self, model=None):
+    def get_loglikelihood(self, model=None, method='innovations_algo'):
         if model is None:
             if self.model is None:
                 raise ValueError('no model specified')
             else:
                 model = self.model
+        if method not in self._implemented_likelihood_methods:
+            raise ValueError('unknown method, implemented methods:' +
+                             str(self._implemented_likelihood_methods))
+        if method == 'innovations_algo':
+            return self._loglikelihood_innovations(model)
+        if method == 'kalman':
+            return self._loglikelihood_kalman(model)
+
+    def _loglikelihood_innovations(self, model):
         rs = model.get_first_rs(len(self._data))
         return np.sum(self._likelihood_exponent(rs, model) -
                       np.log(self._likelihood_dividend(rs, model)))
+
+    def _loglikelihood_kalman(self, model):
+        predictions = (self.get_training_predictions(model=model, method='kalman'))[:-1]
+        residuals = predictions - self._data
+        errors = np.zeros(len(self._data))
+        for t in range(len(self._data)):
+            errors[t] = model.get_state_space_repr().get_pred_delta(t + 1)
+        normalizing_dividend = np.sqrt(2 * np.pi) * np.sqrt(errors)
+        return np.sum((-0.5 * residuals ** 2 / errors) - np.log(normalizing_dividend))
 
     def get_reduced_likelihood(self, model=None):
         if model is None:
@@ -420,14 +438,13 @@ class ARMA:
             start_model = self._fit_arma_durbin_levinson(p, q)
         return np.hstack(start_model.get_params())
 
-    #ToDo test
-    def get_aicc(self, model=None):
+    def get_aicc(self, model=None, method='kalman'):
         if model is None:
             if self.model is None:
                 raise ValueError('no model specified')
             else:
                 model = self.model
-        return -2 * self.get_loglikelihood(model=model) +\
+        return -2 * self.get_loglikelihood(model=model, method=method) +\
             2 * (model.get_ar_order() + model.get_ma_order() + 1) * len(self._data) /\
             (len(self._data) - model.get_ar_order() - model.get_ma_order() - 2)
 
@@ -442,6 +459,63 @@ class ARMA:
         return model.get_sigma_sq() *\
             (len(self._data) + model.get_ar_order()) /\
             (len(self._data) - model.get_ar_order())
+
+    #ToDo: test
+    def get_bic(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        n = len(self._data)
+        p = model.get_ar_order()
+        q = model.get_ma_order()
+        sq = model.get_sigma_sq()
+
+        return (n - p - q) * np.log(n * sq / (n - p - q)) +\
+            n * (1 + np.log(np.sqrt(2 * np.pi))) +\
+            (p + q) * np.log((np.sum(self._data ** 2) - n * sq) / (p + q))
+
+    def get_residuals(self, model=None, method='kalman'):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        predictions = self.get_training_predictions(model=model, method=method)[:-1]
+        residuals = self._data - predictions
+        return residuals
+
+    def turning_point_test(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        n = len(self._data)
+        residuals = self.get_residuals(model=model, method='kalman')
+        n_turning_pts = self._turning_points(residuals)
+        expected_tpts = 2 * (n - 2) / 3
+        variance = (16 * n - 29) / 90
+        return abs(n_turning_pts - expected_tpts) / variance
+
+    def _turning_points(self, ar):
+        increases = ar[1:] > ar[:-1]
+        tp = (increases[1:] != increases[:-1])
+        return np.sum(tp)
+
+    def fit_summary(self, model=None):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        residuals = get_residuals(model=model, method='kalman')
+        print('mean residuals: {}'.format(round(np.mean(residuals), 3)))
+        print('aicc: {}'.format(self.get_aicc(model=model, method='kalman')))
+        print('bic: {}'.format(self.get_bic(model=model)))
+        print('turning point test: {}'.format(round(self.turning_point_test(model=model), 3)))
+        plt.plot(residuals)
 
 
 #class for handling the pure math side, not supposed to see data

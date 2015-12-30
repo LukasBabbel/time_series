@@ -575,6 +575,61 @@ class Test_ARMA(unittest.TestCase):
         for method in arma._implemented_arma_methods:
             arma.fit_arma(p=2, q=1, method=method)
 
+    def test_aicc_methods(self):
+        simulated_arma = simulate_arma(phi=[0.2, 0.5], theta=[0.2], simulations=50)
+        arma = ARMA(simulated_arma)
+        arma_model = PureARMA(phi=[0.2, 0.5], theta=[0.2], sigma_sq=0.25)
+
+        aicc_kalman = arma.get_aicc(model=arma_model, method='kalman')
+        aicc_innovations = arma.get_aicc(model=arma_model, method='innovations_algo')
+
+        self.assertTrue((aicc_innovations - aicc_kalman) / aicc_innovations < 0.005)
+
+    def test_aicc_innovation(self):
+        model_arma11 = PureARMA([0.2], [0.4], sigma_sq=1)
+        zeros = np.zeros(6)
+        non_zeros = [0, 0, 0, 0, 0, 1]
+        zero_ts = ARMA(zeros)
+        non_zero_ts = ARMA(non_zeros, subtract_mean=False)
+
+        loglikelihood_zeros = np.log((2 * np.pi) ** -3 * (1.375 * 1.0436 * 1.0067 * 1.0011 * 1.0002) ** -0.5)
+        loglikelihood_non_zeros = np.log(np.exp(-0.5 * (1 / 1.0002))) + loglikelihood_zeros
+
+        aicc_zeros = -2 * loglikelihood_zeros + 18
+        aicc_nonzeros = -2 * loglikelihood_non_zeros + 18
+
+        self.assertAlmostEqual(zero_ts.get_aicc(model_arma11, method='innovations_algo'), aicc_zeros, 4)
+        self.assertAlmostEqual(non_zero_ts.get_aicc(model_arma11, method='innovations_algo'), aicc_nonzeros, 3)
+
+    def test_turning_pts(self):
+        const = np.ones(10)
+        decreasing = np.array([2, 1, 0.5, 0, -0.2])
+        increasing = np.array([-2, -1, 0, 0.1, 0.2, 0.4])
+        seq = np.array([1, 0.5, 0, 1, 0.4, 0.2, 3])
+        short = np.array([0, 1, 0])
+        very_short = np.array([0, 1])
+        singleton = np.array([0])
+        empty = np.array([])
+
+        arma = ARMA([0])
+
+        self.assertEqual(arma._turning_points(const), 0)
+        self.assertEqual(arma._turning_points(decreasing), 0)
+        self.assertEqual(arma._turning_points(increasing), 0)
+        self.assertEqual(arma._turning_points(seq), 3)
+        self.assertEqual(arma._turning_points(short), 1)
+        self.assertEqual(arma._turning_points(very_short), 0)
+        self.assertEqual(arma._turning_points(singleton), 0)
+        self.assertEqual(arma._turning_points(empty), 0)
+
+    def test_turning_point_test(self):
+        seq = ARMA([1, 0.5, 0, 1, 0.4, 0.2, 3])
+        model = PureARMA()
+
+        turning_test_result = abs(10 / 3 - 3) / ((16 * 7 - 29) / 90)
+
+        self.assertEqual(seq.turning_point_test(model=model), turning_test_result)
+
 
 class Test_Transform(unittest.TestCase):
     def test_box_cox_transform(self):
