@@ -486,14 +486,33 @@ class ARMA:
         residuals = self._data - predictions
         return residuals
 
-    def turning_point_test(self, model=None):
-        if model is None:
-            if self.model is None:
-                raise ValueError('no model specified')
-            else:
-                model = self.model
+    def difference_sign_test(self, model=None, residuals=None):
+        if residuals is None:
+            if model is None:
+                if self.model is None:
+                    raise ValueError('no model specified')
+                else:
+                    model = self.model
+            residuals = self.get_residuals(model=model, method='kalman')
         n = len(self._data)
-        residuals = self.get_residuals(model=model, method='kalman')
+        n_sign_diffs = self._differene_sign(residuals)
+        expected_sign_diffs = (n - 1) / 2
+        variance = (n + 1) / 12
+        return abs(n_sign_diffs - expected_sign_diffs) / variance
+
+    def _differene_sign(self, ar):
+        increases = ar[1:] > ar[:-1]
+        return np.sum(increases)
+
+    def turning_point_test(self, model=None, residuals=None):
+        if residuals is None:
+            if model is None:
+                if self.model is None:
+                    raise ValueError('no model specified')
+                else:
+                    model = self.model
+            residuals = self.get_residuals(model=model, method='kalman')
+        n = len(self._data)
         n_turning_pts = self._turning_points(residuals)
         expected_tpts = 2 * (n - 2) / 3
         variance = (16 * n - 29) / 90
@@ -510,11 +529,12 @@ class ARMA:
                 raise ValueError('no model specified')
             else:
                 model = self.model
-        residuals = get_residuals(model=model, method='kalman')
+        residuals = self.get_residuals(model=model, method='kalman')
         print('mean residuals: {}'.format(round(np.mean(residuals), 3)))
         print('aicc: {}'.format(self.get_aicc(model=model, method='kalman')))
         print('bic: {}'.format(self.get_bic(model=model)))
         print('turning point test: {}'.format(round(self.turning_point_test(model=model), 3)))
+        print('sign difference test: {}'.format(round(self.difference_sign_test(model=model), 3)))
         plt.plot(residuals)
 
 

@@ -623,12 +623,45 @@ class Test_ARMA(unittest.TestCase):
         self.assertEqual(arma._turning_points(empty), 0)
 
     def test_turning_point_test(self):
-        seq = ARMA([1, 0.5, 0, 1, 0.4, 0.2, 3])
+        data = np.array([1, 0.5, 0, 1, 0.4, 0.2, 3])
+        seq = ARMA(data)
         model = PureARMA()
 
         turning_test_result = abs(10 / 3 - 3) / ((16 * 7 - 29) / 90)
 
         self.assertEqual(seq.turning_point_test(model=model), turning_test_result)
+        self.assertEqual(seq.turning_point_test(residuals=data), turning_test_result)
+
+    def test_difference_sign_test(self):
+        data = np.array([1, 0.5, 0, 1, 0.4, 0.2, 3])
+        seq = ARMA(data)
+        model = PureARMA()
+
+        diff_sign_result = 1 / (8 / 12)
+
+        self.assertEqual(seq.difference_sign_test(model=model), diff_sign_result)
+        self.assertEqual(seq.difference_sign_test(residuals=data), diff_sign_result)
+
+    def test_difference_sign(self):
+        const = np.ones(10)
+        decreasing = np.array([2, 1, 0.5, 0, -0.2])
+        increasing = np.array([-2, -1, 0, 0.1, 0.2, 0.4])
+        seq = np.array([1, 0.5, 0, 1, 0.4, 0.2, 3])
+        short = np.array([0, 1, 0])
+        very_short = np.array([0, 1])
+        singleton = np.array([0])
+        empty = np.array([])
+
+        arma = ARMA([0])
+
+        self.assertEqual(arma._differene_sign(const), 0)
+        self.assertEqual(arma._differene_sign(decreasing), 0)
+        self.assertEqual(arma._differene_sign(increasing), 5)
+        self.assertEqual(arma._differene_sign(seq), 2)
+        self.assertEqual(arma._differene_sign(short), 1)
+        self.assertEqual(arma._differene_sign(very_short), 1)
+        self.assertEqual(arma._differene_sign(singleton), 0)
+        self.assertEqual(arma._differene_sign(empty), 0)
 
 
 class Test_Transform(unittest.TestCase):
