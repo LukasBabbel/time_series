@@ -569,13 +569,16 @@ class Test_ARMA(unittest.TestCase):
         self.assertListEqual(pos_mean._backtransform(pos_mean._transform(empty)).tolist(), empty)
         self.assertListEqual(neg_fraction_mean._backtransform(neg_fraction_mean._transform(empty)).tolist(), empty)
 
+    #test that none of the fitting methods throws an exception
     def test_no_fitting_exceptions(self):
+        np.random.seed(12345)
         simulated_arma = simulate_arma(phi=[0.2, 0.5], theta=[0.2], simulations=10)
         arma = ARMA(simulated_arma)
         for method in arma._implemented_arma_methods:
             arma.fit_arma(p=2, q=1, method=method)
 
     def test_aicc_methods(self):
+        np.random.seed(12345)
         simulated_arma = simulate_arma(phi=[0.2, 0.5], theta=[0.2], simulations=50)
         arma = ARMA(simulated_arma)
         arma_model = PureARMA(phi=[0.2, 0.5], theta=[0.2], sigma_sq=0.25)
@@ -583,7 +586,8 @@ class Test_ARMA(unittest.TestCase):
         aicc_kalman = arma.get_aicc(model=arma_model, method='kalman')
         aicc_innovations = arma.get_aicc(model=arma_model, method='innovations_algo')
 
-        self.assertTrue((aicc_innovations - aicc_kalman) / aicc_innovations < 0.005)
+        #test <0.5% difference between methods
+        self.assertTrue(abs(aicc_innovations - aicc_kalman) / aicc_innovations < 0.005)
 
     def test_aicc_innovation(self):
         model_arma11 = PureARMA([0.2], [0.4], sigma_sq=1)
@@ -600,6 +604,22 @@ class Test_ARMA(unittest.TestCase):
 
         self.assertAlmostEqual(zero_ts.get_aicc(model_arma11, method='innovations_algo'), aicc_zeros, 4)
         self.assertAlmostEqual(non_zero_ts.get_aicc(model_arma11, method='innovations_algo'), aicc_nonzeros, 3)
+
+    def test_aic_innovation(self):
+        model_arma11 = PureARMA([0.2], [0.4], sigma_sq=1)
+        zeros = np.zeros(6)
+        non_zeros = [0, 0, 0, 0, 0, 1]
+        zero_ts = ARMA(zeros)
+        non_zero_ts = ARMA(non_zeros, subtract_mean=False)
+
+        loglikelihood_zeros = np.log((2 * np.pi) ** -3 * (1.375 * 1.0436 * 1.0067 * 1.0011 * 1.0002) ** -0.5)
+        loglikelihood_non_zeros = np.log(np.exp(-0.5 * (1 / 1.0002))) + loglikelihood_zeros
+
+        aicc_zeros = -2 * loglikelihood_zeros + 6
+        aicc_nonzeros = -2 * loglikelihood_non_zeros + 6
+
+        self.assertAlmostEqual(zero_ts.get_aic(model_arma11, method='innovations_algo'), aicc_zeros, 4)
+        self.assertAlmostEqual(non_zero_ts.get_aic(model_arma11, method='innovations_algo'), aicc_nonzeros, 3)
 
     def test_turning_pts(self):
         const = np.ones(10)

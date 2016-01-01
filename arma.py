@@ -7,7 +7,7 @@ import scipy.optimize
 LIMIT = 50
 
 
-#class for handling the ugly side (sample (p)acf, model fitting...)
+#class for handling the ugly side (sample (p)acf, model fitting, model evaluation...)
 class ARMA:
     def __init__(self, data, d=0, subtract_mean=True, box_cox=None):
         #transform and save data
@@ -256,6 +256,7 @@ class ARMA:
             return self._kalman_predicitons(n, model)
 
     #ToDo refactor using numpy arrays
+    #Brockwell, Davis p. 175, ch. 5.3
     def _classic_one_step_prediction(self, n, model):
         m = max(model.get_ar_order(), model.get_ma_order())
         predictions = np.zeros(max(n, m) + 1)
@@ -438,6 +439,7 @@ class ARMA:
             start_model = self._fit_arma_durbin_levinson(p, q)
         return np.hstack(start_model.get_params())
 
+    #Brockwell, Davis p. 287
     def get_aicc(self, model=None, method='kalman'):
         if model is None:
             if self.model is None:
@@ -448,6 +450,17 @@ class ARMA:
             2 * (model.get_ar_order() + model.get_ma_order() + 1) * len(self._data) /\
             (len(self._data) - model.get_ar_order() - model.get_ma_order() - 2)
 
+    #Brockwell, Davis p. 304
+    def get_aic(self, model=None, method='kalman'):
+        if model is None:
+            if self.model is None:
+                raise ValueError('no model specified')
+            else:
+                model = self.model
+        return -2 * self.get_loglikelihood(model=model, method=method) +\
+            2 * (model.get_ar_order() + model.get_ma_order() + 1)
+
+    #Brockwell, Davis p. 302
     def get_fpe(self, model=None):
         if model is None:
             if self.model is None:
@@ -461,6 +474,7 @@ class ARMA:
             (len(self._data) - model.get_ar_order())
 
     #ToDo: test
+    #Brockwell, Davis p. 304
     def get_bic(self, model=None):
         if model is None:
             if self.model is None:
@@ -486,6 +500,7 @@ class ARMA:
         residuals = self._data - predictions
         return residuals
 
+    #Brockwell, Davis p. 313
     def difference_sign_test(self, model=None, residuals=None):
         if residuals is None:
             if model is None:
@@ -504,6 +519,7 @@ class ARMA:
         increases = ar[1:] > ar[:-1]
         return np.sum(increases)
 
+    #Brockwell, Davis p. 312
     def turning_point_test(self, model=None, residuals=None):
         if residuals is None:
             if model is None:
@@ -532,9 +548,12 @@ class ARMA:
         residuals = self.get_residuals(model=model, method='kalman')
         print('mean residuals: {}'.format(round(np.mean(residuals), 3)))
         print('aicc: {}'.format(self.get_aicc(model=model, method='kalman')))
+        print('aic: {}'.format(self.get_aic(model=model, method='kalman')))
         print('bic: {}'.format(self.get_bic(model=model)))
-        print('turning point test: {}'.format(round(self.turning_point_test(model=model), 3)))
-        print('sign difference test: {}'.format(round(self.difference_sign_test(model=model), 3)))
+        print('turning point test: {}'.format(
+            round(self.turning_point_test(residuals=residuals), 3)))
+        print('sign difference test: {}'.format(
+            round(self.difference_sign_test(residuals=residuals), 3)))
         plt.plot(residuals)
 
 
@@ -594,6 +613,7 @@ class PureARMA:
             return self._theta[k - 1]
         return 0
 
+    #Brockwell, Davis p. 468 ex.12.1.5
     def get_state_space_repr(self):
         if self._state_space_representation is None:
             F = self._compute_F()
@@ -704,6 +724,7 @@ class PureARMA:
         self._innovation_coefs[(n, j)] = coef
         return coef
 
+    #Brockwell, Davis p. 175, ch. 5.3
     def _calculate_innovation_coef(self, n, j):
         k = n - j
         return (
@@ -717,6 +738,7 @@ class PureARMA:
     def get_innovations_error(self, n):
         return self._get_innovations_error_w(n) * self.get_sigma_sq()
 
+    #Brockwell, Davis p. 175, ch. 5.3
     def _get_innovations_error_w(self, n):
         if n in self._innovation_errors:
             return self._innovation_errors[n]
@@ -727,6 +749,7 @@ class PureARMA:
     def get_r(self, n):
         return self._get_innovations_error_w(n)
 
+    #get r_0, ... , r_n-1
     def get_first_rs(self, n):
         rs = np.ones(n)
         for j in range(n):
@@ -760,6 +783,7 @@ class PureARMA:
         return 0
 
 
+#class for state space representation of a time series
 class StateSpaceModel:
     def __init__(self, F, G, Q, R, S):
         #time invariant state space model (see Brockwell, Davis ch. 12):
@@ -790,6 +814,7 @@ class StateSpaceModel:
     def get_S(self):
         return self._S
 
+    #Brockwell, Davis p. 476, Sigma from prop. 12.2.2
     def get_error_cov_matrix(self, t):
         if t < 1:
             raise ValueError('Prediction error only defined for positive index')
@@ -853,6 +878,7 @@ class Transform:
     def _subtract_mean(self, data, mean):
         return data - mean
 
+    #Brockwell, Davis p. 284
     def _box_cox_transform(self, data):
         if self._box_cox == 0:
             return np.log(data)
